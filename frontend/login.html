@@ -1,442 +1,336 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
+  <title>Spider Symbiote — Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Spider-Venom Bot · Enter</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --black:   #000;
-      --deep:    #05050f;
-      --card:    #0b0b1a;
-      --border:  rgba(220,20,60,0.2);
-      --red:     #dc143c;
-      --red2:    #ff2d55;
-      --white:   #e8e0ff;
-      --muted:   rgba(200,190,230,0.4);
-      --web:     rgba(220,20,60,0.06);
+      --primary: #cc0000;
+      --primary-dark: #990000;
+      --secondary: #1a1a1a;
+      --accent: #ff2222;
+      --web: #888888;
+      --dark: #0a0a0a;
+      --darker: #050505;
+      --light: #f0f0f0;
+      --gray: #555555;
+      --gray-light: #aaaaaa;
+      --card-bg: #111111;
+      --card-border: #2a0000;
+      --glow: rgba(204,0,0,0.35);
     }
-
-    @keyframes symbioteBlob {
-      0%,100% { border-radius: 60% 40% 70% 30% / 50% 60% 40% 50%; }
-      33%  { border-radius: 40% 60% 30% 70% / 60% 40% 60% 40%; }
-      66%  { border-radius: 70% 30% 60% 40% / 40% 70% 30% 60%; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--darker);
+      color: var(--light);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow-x: hidden;
     }
-    @keyframes drip {
-      0%   { transform: scaleY(0) translateY(-5px); opacity: 0; }
-      15%  { opacity: 0.9; }
-      85%  { transform: scaleY(1) translateY(0); opacity: 0.6; }
-      100% { transform: scaleY(1.05) translateY(4px); opacity: 0; }
-    }
-    @keyframes cardIn {
-      from { opacity: 0; transform: translateY(24px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    @keyframes eyePulse {
-      0%,100% { filter: drop-shadow(0 0 8px rgba(220,20,60,0.6)); }
-      50%     { filter: drop-shadow(0 0 24px rgba(220,20,60,1)) drop-shadow(0 0 48px rgba(255,45,85,0.4)); }
-    }
-    @keyframes scanline {
-      0%   { transform: translateY(-100%); }
-      100% { transform: translateY(100vh); }
-    }
-    @keyframes glitch {
-      0%,90%,100% { clip-path: none; transform: none; }
-      92% { clip-path: inset(20% 0 60% 0); transform: translate(-3px, 0); }
-      94% { clip-path: inset(60% 0 20% 0); transform: translate(3px, 0); }
-      96% { clip-path: inset(40% 0 40% 0); transform: translate(-2px, 0); }
-    }
-    @keyframes webSpread {
-      from { opacity: 0; stroke-dashoffset: 200; }
-      to   { opacity: 0.15; stroke-dashoffset: 0; }
-    }
-
-    html, body {
-      height: 100%;
-      background: var(--black);
-      color: var(--white);
-      font-family: 'Rajdhani', sans-serif;
-      overflow: hidden;
-    }
-
-    /* Noise texture overlay */
+    /* Web pattern background */
     body::before {
       content: '';
-      position: fixed; inset: 0; z-index: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(180,0,0,0.08) 0%, transparent 60%),
+        radial-gradient(circle at 80% 70%, rgba(100,0,0,0.06) 0%, transparent 50%);
       pointer-events: none;
+      z-index: 0;
     }
-
-    /* Scanline */
-    body::after {
-      content: '';
-      position: fixed; inset: 0; z-index: 1;
-      background: linear-gradient(transparent 50%, rgba(0,0,0,0.04) 50%);
-      background-size: 100% 4px;
+    .web-lines {
+      position: fixed;
+      inset: 0;
       pointer-events: none;
+      z-index: 0;
+      opacity: 0.06;
+      background-image:
+        repeating-linear-gradient(45deg, #cc0000 0px, #cc0000 1px, transparent 1px, transparent 60px),
+        repeating-linear-gradient(-45deg, #cc0000 0px, #cc0000 1px, transparent 1px, transparent 60px);
     }
-
-    .bg {
-      position: fixed; inset: 0; z-index: 0;
-      background:
-        radial-gradient(ellipse at 20% 20%, rgba(80,5,20,0.5) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 80%, rgba(40,0,60,0.4) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 50%, rgba(10,2,30,0.8) 0%, transparent 70%);
-    }
-
-    /* Spider web SVG background */
-    .web-svg {
-      position: fixed; inset: 0; z-index: 0;
-      width: 100%; height: 100%;
-      pointer-events: none;
-      opacity: 0.08;
-    }
-
-    /* Symbiote blobs */
-    .blob {
-      position: fixed; z-index: 0;
-      background: radial-gradient(circle, rgba(180,10,40,0.12), transparent 70%);
-      filter: blur(60px);
-      animation: symbioteBlob 8s ease-in-out infinite;
-      pointer-events: none;
-    }
-    .blob-1 { width: 400px; height: 400px; top: -100px; left: -100px; animation-delay: 0s; }
-    .blob-2 { width: 300px; height: 300px; bottom: -80px; right: -80px; animation-delay: -4s; background: radial-gradient(circle, rgba(80,0,140,0.12), transparent 70%); }
-
-    /* Drips */
-    .drips {
-      position: fixed; top: 0; left: 0; right: 0;
-      display: flex; justify-content: space-around;
-      z-index: 1; pointer-events: none;
-    }
-    .drip {
-      background: linear-gradient(to bottom, rgba(150,5,30,0.8), rgba(220,20,60,0.4), transparent);
-      border-radius: 0 0 50% 50%;
-      transform-origin: top;
-      animation: drip 5s ease-in infinite;
-      width: 3px;
-    }
-
-    /* Header */
     header {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      padding: 1rem 2rem;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(220,20,60,0.15);
+      padding: 1.4rem 2rem;
+      background: rgba(10,10,10,0.95);
+      border-bottom: 2px solid var(--card-border);
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 20px var(--glow);
     }
     .logo {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.5rem; letter-spacing: 8px;
-      color: var(--white);
-      text-shadow: 0 0 20px rgba(220,20,60,0.5);
-      animation: glitch 6s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--light);
     }
-    .logo span { color: var(--red); }
-
-    /* Main layout */
-    main {
-      position: relative; z-index: 5;
-      height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-      padding: 1rem;
-    }
-
-    /* Card */
-    .card {
-      width: 100%; max-width: 400px;
-      background: rgba(8,6,20,0.85);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2.5rem 2rem 2rem;
-      animation: cardIn 0.5s ease-out forwards;
+    .logo .spider-icon { color: var(--primary); font-size: 1.8rem; filter: drop-shadow(0 0 8px var(--primary)); }
+    .logo span { text-shadow: 0 0 12px rgba(204,0,0,0.5); }
+    .login-card {
       position: relative;
-      backdrop-filter: blur(20px);
-      box-shadow:
-        0 0 0 1px rgba(220,20,60,0.08),
-        0 20px 60px rgba(0,0,0,0.8),
-        inset 0 1px 0 rgba(255,255,255,0.04);
+      z-index: 1;
+      width: 100%;
+      max-width: 420px;
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 0 40px var(--glow), 0 8px 32px rgba(0,0,0,0.6);
+      margin-top: 5rem;
     }
-    /* Red top accent line */
-    .card::before {
+    .login-card::before {
       content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, transparent, var(--red), var(--red2), transparent);
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      border-radius: 16px 16px 0 0;
     }
-
-    /* Venom face icon */
-    .face {
+    .card-header {
       text-align: center;
-      margin-bottom: 1.2rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1.2rem;
+      border-bottom: 1px solid var(--card-border);
     }
-    .face svg {
-      width: 56px; height: 56px;
-      animation: eyePulse 2.5s ease-in-out infinite;
-    }
-
     .card-title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.8rem; letter-spacing: 4px;
-      text-align: center; color: var(--white);
-      text-shadow: 0 0 20px rgba(220,20,60,0.3);
-      margin-bottom: 0.2rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: var(--light);
     }
-    .card-sub {
-      text-align: center; font-size: 0.85rem; letter-spacing: 1px;
-      color: var(--muted); margin-bottom: 1.8rem;
-      font-weight: 300;
+    .card-title i { color: var(--primary); }
+    .card-subtitle {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--gray-light);
+      font-style: italic;
     }
-
-    /* Tabs */
     .tabs {
-      display: flex; gap: 0; margin-bottom: 1.8rem;
-      border: 1px solid rgba(220,20,60,0.2);
-      border-radius: 2px; overflow: hidden;
+      display: flex;
+      margin-bottom: 1.5rem;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--dark);
+      border: 1px solid var(--card-border);
     }
     .tab {
-      flex: 1; padding: 0.65rem;
-      text-align: center; cursor: pointer;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.7rem; letter-spacing: 2px;
-      color: var(--muted);
+      flex: 1;
+      padding: 0.75rem;
+      text-align: center;
+      cursor: pointer;
       transition: all 0.2s;
-      text-transform: uppercase;
-      background: rgba(0,0,0,0.3);
+      font-weight: 600;
+      font-family: 'Rajdhani', sans-serif;
+      letter-spacing: 1px;
+      font-size: 0.95rem;
     }
-    .tab.active {
-      background: rgba(220,20,60,0.15);
-      color: var(--white);
-      border-bottom: 2px solid var(--red);
-    }
-    .tab:hover:not(.active) { color: var(--white); background: rgba(220,20,60,0.06); }
-
-    /* Form */
-    .form-group { margin-bottom: 1.2rem; }
+    .tab.active { background: var(--primary); color: white; }
+    .tab:hover:not(.active) { background: #1a0000; }
+    .form-group { margin-bottom: 1.4rem; }
     .form-label {
       display: block;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.65rem; letter-spacing: 2px;
-      color: rgba(220,20,60,0.7); text-transform: uppercase;
       margin-bottom: 0.5rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
     }
+    .form-label i { color: var(--primary); }
     .form-input {
-      width: 100%; padding: 0.8rem 1rem;
-      background: rgba(0,0,0,0.6);
-      border: 1px solid rgba(220,20,60,0.2);
-      border-radius: 2px;
-      color: var(--white);
-      font-family: 'Space Mono', monospace;
-      font-size: 0.85rem;
-      outline: none;
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: #0d0d0d;
+      color: var(--light);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
       transition: all 0.2s;
     }
     .form-input:focus {
-      border-color: rgba(220,20,60,0.6);
-      box-shadow: 0 0 0 3px rgba(220,20,60,0.08), inset 0 0 0 1px rgba(220,20,60,0.1);
-      background: rgba(10,0,10,0.8);
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(204,0,0,0.2);
     }
-    .form-input::placeholder { color: rgba(200,190,230,0.2); }
-
-    /* Button */
-    .btn {
-      width: 100%; padding: 0.85rem;
-      background: rgba(220,20,60,0.12);
-      border: 1px solid rgba(220,20,60,0.4);
-      border-radius: 2px;
-      color: var(--white);
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.1rem; letter-spacing: 4px;
+    .form-input::placeholder { color: var(--gray); }
+    .form-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.9rem 1.5rem;
+      border-radius: 8px;
       cursor: pointer;
+      font-weight: 700;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 1.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
       transition: all 0.2s;
-      margin-top: 0.5rem;
-      position: relative;
-      overflow: hidden;
+      width: 100%;
+      text-transform: uppercase;
     }
-    .btn::before {
-      content: '';
-      position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(220,20,60,0.15), transparent);
-      transition: left 0.4s;
+    .form-btn:hover {
+      background: var(--accent);
+      box-shadow: 0 4px 20px var(--glow);
+      transform: translateY(-2px);
     }
-    .btn:hover::before { left: 100%; }
-    .btn:hover {
-      background: rgba(220,20,60,0.22);
-      border-color: rgba(220,20,60,0.7);
-      box-shadow: 0 0 24px rgba(220,20,60,0.2);
+    .form-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .error-msg {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      background: rgba(204,0,0,0.12);
+      color: #ff5555;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: 1px solid rgba(204,0,0,0.3);
     }
-    .btn:active { transform: scale(0.99); }
-
-    /* Message */
-    .msg {
-      margin-top: 1rem; padding: 0.7rem 1rem;
-      border-radius: 2px; font-size: 0.85rem;
-      font-family: 'Space Mono', monospace; letter-spacing: 0.5px;
-      display: none;
-    }
-    .msg.error   { background: rgba(220,20,60,0.1); border: 1px solid rgba(220,20,60,0.3); color: #ff7090; display: block; }
-    .msg.success { background: rgba(20,200,80,0.08); border: 1px solid rgba(20,200,80,0.25); color: #5aff8a; display: block; }
-
     footer {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
-      text-align: center; padding: 0.8rem;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.6rem; letter-spacing: 3px;
-      color: rgba(255,255,255,0.08); text-transform: uppercase;
-      border-top: 1px solid rgba(220,20,60,0.06);
+      text-align: center;
+      padding: 1.2rem;
+      font-size: 0.8rem;
+      color: var(--gray);
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background: rgba(10,10,10,0.95);
+      border-top: 1px solid var(--card-border);
+      z-index: 10;
+    }
+    footer span { color: var(--primary); }
+    @media (max-width: 480px) {
+      .login-card { margin: 5.5rem 1rem 4rem; padding: 2rem 1.5rem; }
     }
   </style>
 </head>
 <body>
-  <div class="bg"></div>
-  <div class="blob blob-1"></div>
-  <div class="blob blob-2"></div>
-
-  <!-- Spider web SVG -->
-  <svg class="web-svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
-    <g stroke="#dc143c" fill="none" stroke-width="0.8">
-      <line x1="400" y1="0" x2="400" y2="600"/>
-      <line x1="0" y1="300" x2="800" y2="300"/>
-      <line x1="0" y1="0" x2="800" y2="600"/>
-      <line x1="800" y1="0" x2="0" y2="600"/>
-      <ellipse cx="400" cy="300" rx="80" ry="80"/>
-      <ellipse cx="400" cy="300" rx="160" ry="160"/>
-      <ellipse cx="400" cy="300" rx="240" ry="240"/>
-      <ellipse cx="400" cy="300" rx="340" ry="340"/>
-    </g>
-  </svg>
-
-  <div class="drips" id="drips"></div>
-
-  <header><div class="logo">SPIDER<span>-VENOM</span></div></header>
-
-  <main>
-    <div class="card">
-      <div class="face">
-        <!-- Venom face SVG -->
-        <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <ellipse cx="28" cy="28" rx="26" ry="26" fill="rgba(220,20,60,0.1)" stroke="rgba(220,20,60,0.4)" stroke-width="1"/>
-          <ellipse cx="20" cy="22" rx="5" ry="6" fill="white"/>
-          <ellipse cx="36" cy="22" rx="5" ry="6" fill="white"/>
-          <ellipse cx="20" cy="23" rx="3" ry="4" fill="#dc143c"/>
-          <ellipse cx="36" cy="23" rx="3" ry="4" fill="#dc143c"/>
-          <!-- Tongue -->
-          <path d="M22 35 Q28 42 34 35 Q31 40 28 44 Q25 40 22 35Z" fill="#dc143c"/>
-          <!-- Teeth -->
-          <path d="M20 35 L22 35 L21 38Z M24 35 L26 35 L25 38Z M28 35 L30 35 L29 38Z M32 35 L34 35 L33 38Z" fill="white"/>
-          <!-- Smile outline -->
-          <path d="M18 33 Q28 40 38 33" stroke="white" stroke-width="1.5" fill="none"/>
-        </svg>
-      </div>
-
-      <div class="card-title">WE ARE VENOM</div>
-      <div class="card-sub">The symbiote requires identification</div>
-
-      <div class="tabs">
-        <div class="tab active" onclick="switchTab('login')">ENTER</div>
-        <div class="tab" onclick="switchTab('register')">JOIN</div>
-      </div>
-
-      <!-- Login form -->
-      <div id="login-form">
-        <div class="form-group">
-          <label class="form-label">Host Identity</label>
-          <input class="form-input" type="text" id="l-user" placeholder="username" autocomplete="username"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Symbiote Bond Code</label>
-          <input class="form-input" type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password"/>
-        </div>
-        <button class="btn" onclick="doLogin()">ENTER THE VOID</button>
-      </div>
-
-      <!-- Register form -->
-      <div id="register-form" style="display:none">
-        <div class="form-group">
-          <label class="form-label">Choose Host Identity</label>
-          <input class="form-input" type="text" id="r-user" placeholder="new username" autocomplete="username"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Forge Bond Code</label>
-          <input class="form-input" type="password" id="r-pass" placeholder="min. 6 characters" autocomplete="new-password"/>
-        </div>
-        <button class="btn" onclick="doRegister()">BECOME THE HOST</button>
-      </div>
-
-      <div class="msg" id="msg"></div>
+  <div class="web-lines"></div>
+  <header>
+    <div class="logo">
+      <i class="fas fa-spider spider-icon"></i>
+      <span>SPIDER SYMBIOTE</span>
     </div>
-  </main>
+  </header>
 
-  <footer>Spider-Venom Symbiote Bot · Powered by Gabimaru</footer>
+  <div class="login-card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i class="fas fa-user-shield"></i>
+        User Authentication
+      </h2>
+      <p class="card-subtitle">🕸️ "With great power comes great responsibility"</p>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" id="tab-login">Login</div>
+      <div class="tab" id="tab-register">Create Account</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="username">
+        <i class="fas fa-user"></i> Username:
+      </label>
+      <input class="form-input" type="text" id="username" placeholder="Enter your username" autocomplete="username"/>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="password">
+        <i class="fas fa-lock"></i> Password:
+      </label>
+      <input class="form-input" type="password" id="password" placeholder="Enter your password" autocomplete="current-password"/>
+    </div>
+
+    <button class="form-btn" id="submit-btn">
+      <i class="fas fa-sign-in-alt"></i> LOGIN
+    </button>
+
+    <div class="error-msg" id="error" style="display:none;">
+      <i class="fas fa-exclamation-circle"></i>
+      <span id="error-text"></span>
+    </div>
+  </div>
+
+  <footer>
+    <i class="fas fa-spider" style="color:var(--primary)"></i>
+    &copy; 2025 <span>Spider Symbiote System</span> — All Rights Reserved
+  </footer>
 
   <script>
-    // Drips
-    const dripsEl = document.getElementById('drips');
-    for (let i = 0; i < 14; i++) {
-      const d = document.createElement('div');
-      d.className = 'drip';
-      d.style.height  = (30 + Math.random() * 80) + 'px';
-      d.style.width   = (2 + Math.random() * 3) + 'px';
-      d.style.animationDelay    = (Math.random() * 6) + 's';
-      d.style.animationDuration = (4 + Math.random() * 4) + 's';
-      d.style.opacity = 0.4 + Math.random() * 0.6;
-      dripsEl.appendChild(d);
+    let mode = "login";
+
+    document.getElementById("tab-login").onclick = () => { mode = "login"; setActiveTab(); };
+    document.getElementById("tab-register").onclick = () => { mode = "register"; setActiveTab(); };
+
+    function setActiveTab() {
+      document.getElementById("tab-login").classList.toggle("active", mode === "login");
+      document.getElementById("tab-register").classList.toggle("active", mode === "register");
+      const btn = document.getElementById("submit-btn");
+      btn.innerHTML = mode === "login"
+        ? '<i class="fas fa-sign-in-alt"></i> LOGIN'
+        : '<i class="fas fa-user-plus"></i> CREATE ACCOUNT';
     }
 
-    function switchTab(tab) {
-      document.querySelectorAll('.tab').forEach((t,i) =>
-        t.classList.toggle('active', tab === 'login' ? i === 0 : i === 1));
-      document.getElementById('login-form').style.display    = tab === 'login' ? 'block' : 'none';
-      document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
-      document.getElementById('msg').className = 'msg';
+    function showError(msg) {
+      const el = document.getElementById("error");
+      document.getElementById("error-text").textContent = msg;
+      el.style.display = "flex";
+    }
+    function hideError() { document.getElementById("error").style.display = "none"; }
+
+    function submit() {
+      const user = document.getElementById("username").value.trim();
+      const pass = document.getElementById("password").value.trim();
+      hideError();
+      if (!user || !pass) return showError("Both fields are required.");
+
+      const btn = document.getElementById("submit-btn");
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+      btn.disabled = true;
+
+      fetch(mode === "login" ? "/login" : "/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, password: pass }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) window.location.href = "/dashboard";
+        else showError("❌ " + (data.message || "Invalid credentials."));
+      })
+      .catch(() => showError("Something went wrong. Try again."))
+      .finally(() => { btn.innerHTML = orig; btn.disabled = false; });
     }
 
-    function showMsg(text, type) {
-      const el = document.getElementById('msg');
-      el.textContent = text;
-      el.className = 'msg ' + type;
-    }
-
-    async function doLogin() {
-      const username = document.getElementById('l-user').value.trim();
-      const password = document.getElementById('l-pass').value;
-      if (!username || !password) return showMsg('All fields required.', 'error');
-      try {
-        const r = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
-        const d = await r.json();
-        if (d.success) {
-          showMsg('Bond confirmed. Entering the void...', 'success');
-          setTimeout(() => window.location.href = '/dashboard', 800);
-        } else {
-          showMsg(d.message || 'Invalid credentials.', 'error');
-        }
-      } catch { showMsg('Connection failed. Try again.', 'error'); }
-    }
-
-    async function doRegister() {
-      const username = document.getElementById('r-user').value.trim();
-      const password = document.getElementById('r-pass').value;
-      if (!username || !password) return showMsg('All fields required.', 'error');
-      if (password.length < 6) return showMsg('Bond code must be at least 6 characters.', 'error');
-      try {
-        const r = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
-        const d = await r.json();
-        if (d.success) {
-          showMsg('The symbiote accepts you. Redirecting...', 'success');
-          setTimeout(() => window.location.href = '/dashboard', 900);
-        } else {
-          showMsg(d.message || 'Registration failed.', 'error');
-        }
-      } catch { showMsg('Connection failed. Try again.', 'error'); }
-    }
-
-    document.addEventListener('keypress', e => {
-      if (e.key !== 'Enter') return;
-      const isLogin = document.getElementById('register-form').style.display === 'none';
-      isLogin ? doLogin() : doRegister();
+    document.getElementById("submit-btn").addEventListener("click", submit);
+    ["username","password"].forEach(id => {
+      document.getElementById(id).addEventListener("keypress", e => { if (e.key === "Enter") submit(); });
     });
   </script>
 </body>

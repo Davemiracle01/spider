@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>𝐃A𝐕𝐄⃰͢⃟༑͢⃟༑ Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --dark: #0f172a;
+      --darker: #0a0e1a;
+      --light: #f8fafc;
+      --gray: #64748b;
+      --gray-light: #cbd5e1;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      background: var(--darker);
+      color: var(--light);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1.2rem 2rem;
+      background: var(--dark);
+      color: var(--light);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    
+    .logo i {
+      color: var(--primary);
+    }
+    
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+      color: var(--gray-light);
+    }
+    
+    .user-info i {
+      font-size: 1.1rem;
+    }
+
+    .tabs {
+      display: flex;
+      background: var(--dark);
+      padding: 0 2rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .tab {
+      padding: 1rem 1.5rem;
+      cursor: pointer;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s;
+      color: var(--gray-light);
+    }
+
+    .tab:hover {
+      color: var(--light);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab.active {
+      color: var(--primary);
+      border-bottom: 3px solid var(--primary);
+      background: rgba(99, 102, 241, 0.1);
+    }
+
+    .container {
+      padding: 2rem;
+      flex: 1;
+      background: var(--dark);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--card-border);
+    }
+    
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .card-title i {
+      color: var(--primary);
+    }
+
+    .user-card {
+      margin-bottom: 1rem;
+      transition: all 0.3s;
+    }
+    
+    .user-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    .user-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      padding: 0.75rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+    }
+    
+    .user-info-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .user-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .username {
+      font-weight: 600;
+    }
+    
+    .device-count {
+      background: var(--dark);
+      color: var(--gray-light);
+      padding: 0.25rem 0.5rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+    }
+
+    .user-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: none;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+    
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+    }
+    
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+    
+    .btn-danger:hover {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .btn-primary {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--primary);
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-success {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--secondary);
+    }
+    
+    .btn-success:hover {
+      background: var(--secondary);
+      color: white;
+    }
+
+    .devices-container {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+    }
+    
+    .device-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .empty-msg {
+      text-align: center;
+      padding: 2rem;
+      color: var(--gray);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .empty-msg i {
+      font-size: 2.5rem;
+      color: var(--gray-light);
+    }
+
+    .footer {
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--gray);
+      background: var(--dark);
+      border-top: 1px solid var(--card-border);
+    }
+
+    #pagination {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 2rem;
+    }
+
+    .pagination-btn {
+      padding: 0.5rem 0.9rem;
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--gray-light);
+      border: 1px solid var(--card-border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .pagination-btn:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    
+    .pagination-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .form-label i {
+      color: var(--primary);
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.9rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--dark);
+      color: var(--light);
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s;
+    }
+    
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .form-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.9rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    
+    .form-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+
+    .result-box {
+      margin-top: 1.5rem;
+      padding: 1.5rem;
+      background: var(--dark);
+      border-radius: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.9rem;
+      border: 1px solid var(--card-border);
+    }
+
+    .success {
+      color: var(--secondary);
+    }
+
+    .error {
+      color: var(--danger);
+    }
+
+    .hidden {
+      display: none;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      border: 1px solid var(--card-border);
+    }
+    
+    .stat-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+    
+    .stat-icon.primary {
+      background: rgba(99, 102, 241, 0.2);
+      color: var(--primary);
+    }
+    
+    .stat-icon.success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--secondary);
+    }
+    
+    .stat-icon.warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+    
+    .stat-icon.danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+    
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+    
+    .stat-label {
+      color: var(--gray-light);
+      font-size: 0.9rem;
+    }
+    
+    @media (max-width: 768px) {
+      .tabs {
+        overflow-x: auto;
+        padding: 0 1rem;
+      }
+      
+      .container {
+        padding: 1rem;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .user-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+      
+      .user-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <i class="fas fa-bolt"></i>
+      <span>𝐃A𝐕𝐄⃰͢⃟༑͢⃟༑ Admin Panel</span>
+    </div>
+    <div class="user-info">
+      <i class="fas fa-user-shield"></i>
+      <span>Administrator</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('dashboard')">
+      <i class="fas fa-chart-line"></i>
+      <span>Dashboard</span>
+    </div>
+    <div class="tab" onclick="switchTab('users')">
+      <i class="fas fa-users"></i>
+      <span>Users</span>
+    </div>
+    <div class="tab" onclick="switchTab('react')">
+      <i class="fas fa-heart"></i>
+      <span>Auto React</span>
+    </div>
+    <div class="tab" onclick="switchTab('idch')">
+      <i class="fas fa-info-circle"></i>
+      <span>Channel Info</span>
+    </div>
+    <div class="tab" onclick="switchTab('status')">
+      <i class="fas fa-server"></i>
+      <span>Session Status</span>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Dashboard Tab -->
+    <div id="dashboard-tab">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon primary">
+            <i class="fas fa-users"></i>
+          </div>
+          <div class="stat-value" id="total-users">0</div>
+          <div class="stat-label">Total Users</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-icon success">
+            <i class="fas fa-mobile-alt"></i>
+          </div>
+          <div class="stat-value" id="total-sessions">0</div>
+          <div class="stat-label">Active Sessions</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-icon warning">
+            <i class="fas fa-heart"></i>
+          </div>
+          <div class="stat-value" id="total-reactions">0</div>
+          <div class="stat-label">Total Reactions</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-icon danger">
+            <i class="fas fa-bug"></i>
+          </div>
+          <div class="stat-value" id="error-rate">0%</div>
+          <div class="stat-label">Error Rate</div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <i class="fas fa-fire"></i>
+            Recent Activity
+          </h2>
+        </div>
+        <div id="recent-activity">
+          <div class="empty-msg">
+            <i class="fas fa-history"></i>
+            <p>No recent activity</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="users-tab" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <i class="fas fa-users"></i>
+            User Management
+          </h2>
+          <button class="btn btn-primary" onclick="refreshUsers()">
+            <i class="fas fa-sync-alt"></i>
+            Refresh
+          </button>
+        </div>
+        <div id="userList">
+          <div class="empty-msg">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading active users...</p>
+          </div>
+        </div>
+        <div id="pagination"></div>
+      </div>
+    </div>
+
+    <!-- React Tab -->
+    <div id="react-tab" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <i class="fas fa-heart"></i>
+            Auto React Tool
+          </h2>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="channelmsglink">
+            <i class="fas fa-link"></i>
+            Channel Message Link:
+          </label>
+          <input class="form-input" type="text" id="channelmsglink" placeholder="https://whatsapp.com/channel/..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="emoji">
+            <i class="fas fa-smile"></i>
+            Emoji:
+          </label>
+          <input class="form-input" type="text" id="emoji" value="❤️" placeholder="❤️" />
+        </div>
+        <div class="form-group">
+          <button class="form-btn" onclick="runAutoReact()">
+            <i class="fas fa-play"></i>
+            Run Auto React
+          </button>
+        </div>
+        <div id="react-result" class="result-box">Results will appear here...</div>
+      </div>
+    </div>
+
+    <!-- IDCH Tab -->
+    <div id="idch-tab" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <i class="fas fa-info-circle"></i>
+            Channel Information
+          </h2>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="inviteCode">
+            <i class="fas fa-key"></i>
+            Invite Code:
+          </label>
+          <input class="form-input" type="text" id="inviteCode" placeholder="Invite code from channel URL" />
+        </div>
+        <div class="form-group">
+          <button class="form-btn" onclick="getChannelInfo()">
+            <i class="fas fa-search"></i>
+            Get Channel Info
+          </button>
+        </div>
+        <div id="idch-result" class="result-box">Channel information will appear here...</div>
+      </div>
+    </div>
+
+    <!-- Status Tab -->
+    <div id="status-tab" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <i class="fas fa-server"></i>
+            Session Status
+          </h2>
+          <button class="btn btn-primary" onclick="getSessionStatus()">
+            <i class="fas fa-sync-alt"></i>
+            Refresh
+          </button>
+        </div>
+        <div id="status-result" class="result-box">Session status will appear here...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <i class="fas fa-code"></i> with <i class="fas fa-heart" style="color: #ef4444"></i> by T.M.K &copy; 2025
+  </div>
+
+  <script>
+    let currentPage = 1;
+    let usersData = [];
+    let sessionsData = [];
+
+    // Initialize the dashboard
+    function initDashboard() {
+      document.getElementById('total-users').textContent = usersData.length;
+      document.getElementById('total-sessions').textContent = sessionsData.length;
+      document.getElementById('total-reactions').textContent = '1.2K';
+      document.getElementById('error-rate').textContent = '2%';
+    }
+
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('[id$="-tab"]').forEach(tab => {
+        tab.classList.add('hidden');
+      });
+      
+      // Show selected tab
+      document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+      
+      // Update active tab indicator
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      // Find the clicked tab and activate it
+      const tabs = document.querySelectorAll('.tab');
+      for (let tab of tabs) {
+        if (tab.textContent.includes(tabName.charAt(0).toUpperCase() + tabName.slice(1))) {
+          tab.classList.add('active');
+          break;
+        }
+      }
+      
+      // Load data if needed
+      if (tabName === 'users') {
+        fetchUsers(currentPage);
+      } else if (tabName === 'status') {
+        getSessionStatus();
+      } else if (tabName === 'dashboard') {
+        initDashboard();
+      }
+    }
+
+    function refreshUsers() {
+      fetchUsers(currentPage);
+    }
+
+    function fetchUsers(page = 1) {
+      const container = document.getElementById("userList");
+      container.innerHTML = `
+        <div class="empty-msg">
+          <i class="fas fa-spinner fa-spin"></i>
+          <p>Loading active users...</p>
+        </div>
+      `;
+
+      fetch('/admin-data?page=' + page)
+        .then(res => res.json())
+        .then(data => {
+          usersData = data.users || [];
+          const container = document.getElementById("userList");
+          container.innerHTML = "";
+
+          if (!data || !data.users || data.users.length === 0) {
+            container.innerHTML = `
+              <div class="empty-msg">
+                <i class="fas fa-user-slash"></i>
+                <p>No active users found.</p>
+              </div>
+            `;
+            return;
+          }
+
+          data.users.forEach(user => {
+            const userCard = document.createElement("div");
+            userCard.className = "user-card card";
+            
+            userCard.innerHTML = `
+              <div class="user-header" onclick="toggleDevices('${user.username}')">
+                <div class="user-info-row">
+                  <div class="user-icon">
+                    <i class="fas fa-user"></i>
+                  </div>
+                  <div>
+                    <div class="username">${user.username}</div>
+                    <div class="device-count">${user.pairings ? user.pairings.length : 0} devices</div>
+                  </div>
+                </div>
+                <div class="user-actions">
+                  <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteUser('${user.username}')">
+                    <i class="fas fa-trash"></i>
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <div id="devices-${user.username}" class="devices-container" style="display:none;">
+                ${user.pairings && user.pairings.length > 0 ? 
+                  user.pairings.map(pair => `
+                    <div class="device-row">
+                      <div class="device-info">
+                        <i class="fas fa-mobile-alt"></i>
+                        <span>${pair}</span>
+                      </div>
+                      <div class="device-actions">
+                        <button class="btn btn-danger btn-sm" onclick="deletePair('${user.username}', '${pair}')">
+                          <i class="fas fa-unlink"></i>
+                          Remove
+                        </button>
+                        <button class="btn btn-success btn-sm" onclick="reloadPair('${user.username}', '${pair}')">
+                          <i class="fas fa-sync"></i>
+                          Reload
+                        </button>
+                      </div>
+                    </div>
+                  `).join('') : 
+                  `<div style="text-align: center; padding: 1rem; color: var(--gray);">
+                    <i class="fas fa-exclamation-circle"></i> No devices paired yet.
+                  </div>`
+                }
+              </div>
+            `;
+
+            container.appendChild(userCard);
+          });
+
+          updatePagination(data.totalUsers, data.page, data.limit);
+        })
+        .catch(err => {
+          console.log("❌ Admin panel fetch error:", err);
+          document.getElementById("userList").innerHTML = `
+            <div class="empty-msg">
+              <i class="fas fa-exclamation-triangle"></i>
+              <p>Failed to load users (server error).</p>
+            </div>
+          `;
+        });
+    }
+
+    function toggleDevices(username) {
+      const el = document.getElementById(`devices-${username}`);
+      if (el) el.style.display = (el.style.display === "none") ? "block" : "none";
+    }
+
+    function deleteUser(username) {
+      if (!confirm(`Delete ${username} and all their data?`)) return;
+
+      fetch(`/admin/users/${username}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            showNotification(`User ${username} deleted successfully`, 'success');
+            fetchUsers(currentPage);
+          } else {
+            showNotification('Failed to delete user.', 'error');
+          }
+        })
+        .catch(() => {
+          showNotification('Error deleting user.', 'error');
+        });
+    }
+
+    function deletePair(username, number) {
+      if (!confirm(`Delete paired number ${number}?`)) return;
+
+      fetch(`/admin/pairs/${number}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            showNotification(`Device ${number} removed successfully`, 'success');
+            fetchUsers(currentPage);
+          } else {
+            showNotification('Failed to delete pair.', 'error');
+          }
+        })
+        .catch(() => {
+          showNotification('Error deleting number.', 'error');
+        });
+    }
+
+    function reloadPair(username, number) {
+      if (!confirm(`Reload session for ${number}?`)) return;
+
+      fetch(`/reload-user?username=${username}&number=${number}`)
+        .then(res => res.text())
+        .then(msg => {
+          showNotification(msg, 'success');
+        })
+        .catch(() => {
+          showNotification('Error trying to reload session.', 'error');
+        });
+    }
+
+    function updatePagination(totalUsers, current, limit) {
+      const container = document.getElementById("pagination");
+      container.innerHTML = "";
+
+      const totalPages = Math.ceil(totalUsers / limit);
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement("button");
+        btn.className = "pagination-btn";
+        btn.textContent = i;
+        if (i === current) btn.classList.add("active");
+        btn.onclick = () => {
+          currentPage = i;
+          fetchUsers(i);
+        };
+        container.appendChild(btn);
+      }
+    }
+
+    function runAutoReact() {
+      const channelmsglink = document.getElementById('channelmsglink').value;
+      const emoji = document.getElementById('emoji').value || '❤️';
+      
+      if (!channelmsglink) {
+        showNotification('Please enter a channel message link', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('react-result');
+      resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+      
+      fetch(`/admin/react?channelmsglink=${encodeURIComponent(channelmsglink)}&emoji=${encodeURIComponent(emoji)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            resultDiv.innerHTML = `
+              <div class="success"><i class="fas fa-check-circle"></i> ${data.message}</div>
+              <div>Success: ${data.summary.successful}/${data.summary.totalSessions}</div>
+              <div>Target: Newsletter ID ${data.target.newsletterId}, Message ${data.target.messageId}</div>
+              <pre>${JSON.stringify(data.details, null, 2)}</pre>
+            `;
+            showNotification('Auto react completed successfully', 'success');
+          } else {
+            resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> ${data.message}</div>`;
+            showNotification('Auto react failed: ' + data.message, 'error');
+          }
+        })
+        .catch(err => {
+          resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Error: ${err.message}</div>`;
+          showNotification('Error: ' + err.message, 'error');
+        });
+    }
+
+    function getChannelInfo() {
+      const inviteCode = document.getElementById('inviteCode').value;
+      
+      if (!inviteCode) {
+        showNotification('Please enter an invite code', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('idch-result');
+      resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+      
+      fetch(`/admin/idch?inviteCode=${encodeURIComponent(inviteCode)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            resultDiv.innerHTML = `
+              <div class="success"><i class="fas fa-check-circle"></i> Channel information retrieved</div>
+              <div><strong>Name:</strong> ${data.metadata.name}</div>
+              <div><strong>ID:</strong> ${data.metadata.id}</div>
+              <div><strong>Subscribers:</strong> ${data.metadata.subscribers}</div>
+              <div><strong>Description:</strong> ${data.metadata.description || 'N/A'}</div>
+              <pre>${JSON.stringify(data.metadata, null, 2)}</pre>
+            `;
+            showNotification('Channel info retrieved successfully', 'success');
+          } else {
+            resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> ${data.message}</div>`;
+            showNotification('Failed to get channel info: ' + data.message, 'error');
+          }
+        })
+        .catch(err => {
+          resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Error: ${err.message}</div>`;
+          showNotification('Error: ' + err.message, 'error');
+        });
+    }
+
+    function getSessionStatus() {
+      const resultDiv = document.getElementById('status-result');
+      resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+      
+      fetch('/admin/ses-status')
+        .then(res => res.json())
+        .then(data => {
+          sessionsData = data.sessions || [];
+          if (data.success) {
+            resultDiv.innerHTML = `
+              <div class="success"><i class="fas fa-check-circle"></i> Active Sessions: ${data.totalSessions}</div>
+              <ul style="list-style: none; padding: 0;">
+                ${data.sessions.map(session => `
+                  <li style="padding: 0.5rem; border-bottom: 1px solid var(--card-border);">
+                    <i class="fas fa-mobile-alt"></i> ${session.number} - <span class="success">${session.status}</span>
+                  </li>
+                `).join('')}
+              </ul>
+            `;
+          } else {
+            resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Failed to get session status</div>`;
+          }
+        })
+        .catch(err => {
+          resultDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Error: ${err.message}</div>`;
+        });
+    }
+
+    function showNotification(message, type) {
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        max-width: 400px;
+      `;
+      
+      if (type === 'success') {
+        notification.style.background = 'var(--secondary)';
+        notification.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
+      } else {
+        notification.style.background = 'var(--danger)';
+        notification.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${message}`;
+      }
+      
+      document.body.appendChild(notification);
+      
+      // Remove notification after 3 seconds
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.5s';
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 500);
+      }, 3000);
+    }
+
+    // Initialize with users tab
+    fetchUsers(currentPage);
+    getSessionStatus();
+  </script>
+</body>
+</html>
