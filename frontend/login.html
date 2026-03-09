@@ -405,11 +405,11 @@
       const password = document.getElementById('l-pass').value;
       if (!username || !password) return showMsg('All fields required.', 'error');
       try {
-        const r = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+        const r = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({username, password}) });
         const d = await r.json();
         if (d.success) {
           showMsg('Bond confirmed. Entering the void...', 'success');
-          setTimeout(() => window.location.href = '/dashboard', 800);
+          setTimeout(() => window.location.replace('/dashboard'), 900);
         } else {
           showMsg(d.message || 'Invalid credentials.', 'error');
         }
@@ -422,11 +422,11 @@
       if (!username || !password) return showMsg('All fields required.', 'error');
       if (password.length < 6) return showMsg('Bond code must be at least 6 characters.', 'error');
       try {
-        const r = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+        const r = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({username, password}) });
         const d = await r.json();
         if (d.success) {
           showMsg('The symbiote accepts you. Redirecting...', 'success');
-          setTimeout(() => window.location.href = '/dashboard', 900);
+          setTimeout(() => window.location.replace('/dashboard'), 900);
         } else {
           showMsg(d.message || 'Registration failed.', 'error');
         }

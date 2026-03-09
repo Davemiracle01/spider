@@ -271,6 +271,13 @@
   <footer>Spider-Venom Symbiote Bot · Command Center</footer>
 
   <script>
+    // Ensure cookies/sessions are always sent with API calls on Heroku
+    const _origFetch = window.fetch;
+    window.fetch = (url, opts = {}) => {
+      opts.credentials = opts.credentials || 'include';
+      return _origFetch(url, opts);
+    };
+
     // Drips
     const dripsEl = document.getElementById('drips');
     for (let i = 0; i < 12; i++) {
@@ -321,7 +328,7 @@
     // ── Logout ─────────────────────────────────────────────────────────────────
     async function doLogout() {
       await fetch('/logout', { method: 'POST' });
-      window.location.href = '/login.html';
+      window.location.replace('/login.html');
     }
 
     // ── Delete bonded number ───────────────────────────────────────────────────
@@ -411,7 +418,7 @@
     async function loadDashboard() {
       try {
         const [meRes, sesRes] = await Promise.all([fetch('/me'), fetch('/ses-status')]);
-        if (meRes.status === 401) { window.location.href = '/login.html'; return; }
+        if (meRes.status === 401) { window.location.replace('/login.html'); return; }
 
         const me  = await meRes.json();
         const ses = await sesRes.json();
