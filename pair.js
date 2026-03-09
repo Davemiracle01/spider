@@ -68,7 +68,7 @@ async function startpairing(number) {
   if (!state.creds.registered) {
     setTimeout(async () => {
       try {
-        let code = await sock.requestPairingCode(number.replace(/[^0-9]/g, ""), "GABIMARU");
+        let code = await sock.requestPairingCode(number.replace(/[^0-9]/g, ""), "ASTATECH");
         code = code?.match(/.{1,4}/g)?.join("-") || code;
         fs.writeFileSync(pairingCodePath, JSON.stringify({ code, number }, null, 2));
         console.log(chalk.magentaBright(`Pairing code for ${number}: ${code}`));
