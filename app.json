@@ -1,0 +1,33 @@
+{
+  "name": "Gabimaru WhatsApp Bot",
+  "description": "Spider-Venom Symbiote Edition WhatsApp Bot — Heroku Ready",
+  "logo": "",
+  "keywords": ["whatsapp", "bot", "baileys"],
+  "env": {
+    "APP_URL": {
+      "description": "Your Heroku app URL (e.g. https://your-app.herokuapp.com). Used for keepalive pings.",
+      "required": false
+    },
+    "GROQ_API_KEY": {
+      "description": "Groq AI API key for chatbot feature. Get at https://console.groq.com",
+      "required": false
+    },
+    "TELEGRAM_BOT_TOKEN": {
+      "description": "Telegram bot token for .telesticker command",
+      "required": false
+    },
+    "SESSION_SECRET": {
+      "description": "Secret key for web session security. Use a long random string.",
+      "required": false,
+      "value": "gabimaru_venom_change_this_key"
+    },
+    "TZ": {
+      "description": "Timezone for bot timestamps",
+      "required": false,
+      "value": "Africa/Nairobi"
+    }
+  },
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ]
+}
