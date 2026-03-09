@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spider-Venom Bot · Command Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --black: #000; --deep: #05050f; --card: rgba(10,8,22,0.9);
+      --border: rgba(220,20,60,0.15); --red: #dc143c; --red2: #ff2d55;
+      --white: #e8e0ff; --muted: rgba(200,190,230,0.4);
+      --green: #00ff88; --orange: #ff8c00; --blue: #4488ff;
+    }
+    @keyframes drip  { 0%{transform:scaleY(0) translateY(-5px);opacity:0} 15%{opacity:.9} 85%{transform:scaleY(1) translateY(0);opacity:.6} 100%{transform:scaleY(1.05) translateY(4px);opacity:0} }
+    @keyframes cardIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+    @keyframes pulse  { 0%,100%{box-shadow:0 0 6px rgba(0,255,136,0.4)} 50%{box-shadow:0 0 18px rgba(0,255,136,0.8)} }
+    @keyframes pulseR { 0%,100%{box-shadow:0 0 6px rgba(220,20,60,0.4)} 50%{box-shadow:0 0 18px rgba(220,20,60,0.8)} }
+    @keyframes countUp { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:none} }
+    @keyframes glitch { 0%,90%,100%{transform:none} 92%{transform:translate(-2px,0)} 94%{transform:translate(2px,0)} }
+    @keyframes spin   { to{transform:rotate(360deg)} }
+    @keyframes symbioteBlob { 0%,100%{border-radius:60% 40% 70% 30%/50% 60% 40% 50%} 50%{border-radius:40% 60% 30% 70%/60% 40% 60% 40%} }
+    @keyframes uptime { 0%{opacity:.7} 50%{opacity:1} 100%{opacity:.7} }
+    @keyframes slideIn { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:none} }
+
+    html { scroll-behavior: smooth; }
+    body { background:var(--black); color:var(--white); font-family:'Rajdhani',sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+    body::after { content:''; position:fixed; inset:0; z-index:0; background:linear-gradient(transparent 50%,rgba(0,0,0,0.04) 50%); background-size:100% 4px; pointer-events:none; }
+
+    .bg { position:fixed; inset:0; z-index:0; background: radial-gradient(ellipse at 10% 10%,rgba(80,5,20,0.45) 0%,transparent 50%), radial-gradient(ellipse at 90% 90%,rgba(40,0,60,0.35) 0%,transparent 50%), radial-gradient(ellipse at 50% 50%,rgba(6,2,18,0.95) 0%,transparent 70%); }
+    .blob { position:fixed; z-index:0; filter:blur(70px); animation:symbioteBlob 10s ease-in-out infinite; pointer-events:none; }
+    .blob-1 { width:400px; height:400px; top:-100px; left:-100px; background:radial-gradient(circle,rgba(160,8,35,0.08),transparent 70%); }
+    .blob-2 { width:350px; height:350px; bottom:-80px; right:-80px; animation-delay:-5s; background:radial-gradient(circle,rgba(70,0,120,0.09),transparent 70%); }
+    .web-svg { position:fixed; inset:0; z-index:0; width:100%; height:100%; pointer-events:none; opacity:0.05; }
+    .drips { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-around; z-index:1; pointer-events:none; }
+    .drip { background:linear-gradient(to bottom,rgba(150,5,30,0.8),rgba(220,20,60,0.4),transparent); border-radius:0 0 50% 50%; transform-origin:top; animation:drip 5s ease-in infinite; }
+
+    /* Header */
+    header { position:sticky; top:0; z-index:20; padding:0.9rem 2rem; background:rgba(0,0,0,0.75); backdrop-filter:blur(20px); border-bottom:1px solid rgba(220,20,60,0.12); display:flex; align-items:center; gap:1.5rem; justify-content:space-between; }
+    .logo { font-family:'Bebas Neue',sans-serif; font-size:1.3rem; letter-spacing:6px; color:var(--white); animation:glitch 7s ease-in-out infinite; white-space:nowrap; }
+    .logo span { color:var(--red); }
+    .header-nav { display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap; }
+    .nav-btn { font-family:'Space Mono',monospace; font-size:0.65rem; letter-spacing:2px; text-transform:uppercase; color:var(--muted); cursor:pointer; text-decoration:none; border:none; background:none; transition:color 0.2s; padding:0; }
+    .nav-btn:hover { color:var(--white); }
+    .nav-btn.cta { color:rgba(220,20,60,0.8); border:1px solid rgba(220,20,60,0.3); padding:0.4rem 0.8rem; border-radius:2px; transition:all 0.2s; }
+    .nav-btn.cta:hover { background:rgba(220,20,60,0.1); color:var(--white); border-color:rgba(220,20,60,0.6); }
+    .user-badge { font-family:'Space Mono',monospace; font-size:0.7rem; color:rgba(220,20,60,0.6); }
+
+    /* Layout */
+    main { flex:1; position:relative; z-index:5; padding:2rem 1.5rem; max-width:900px; margin:0 auto; width:100%; }
+
+    /* Section header */
+    .section-head { display:flex; align-items:center; gap:0.8rem; margin-bottom:1.2rem; }
+    .section-title { font-family:'Bebas Neue',sans-serif; font-size:1rem; letter-spacing:4px; color:rgba(220,20,60,0.8); text-transform:uppercase; }
+    .section-line { flex:1; height:1px; background:linear-gradient(90deg,rgba(220,20,60,0.3),transparent); }
+
+    /* Stats row */
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:0.8rem; margin-bottom:2rem; }
+    .stat { background:var(--card); border:1px solid var(--border); border-radius:3px; padding:1.2rem 1rem; text-align:center; animation:cardIn 0.4s ease-out; position:relative; overflow:hidden; }
+    .stat::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(220,20,60,0.4),transparent); }
+    .stat-val { font-family:'Bebas Neue',sans-serif; font-size:2rem; color:#fff; line-height:1; animation:countUp 0.5s ease-out; }
+    .stat-label { font-family:'Space Mono',monospace; font-size:0.58rem; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin-top:0.25rem; }
+    .stat-icon { font-size:0.9rem; margin-bottom:0.3rem; opacity:0.6; }
+
+    /* Card base */
+    .card { background:var(--card); border:1px solid var(--border); border-radius:3px; padding:1.6rem; margin-bottom:1.4rem; animation:cardIn 0.5s ease-out; position:relative; }
+    .card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(220,20,60,0.35),transparent); }
+    .card-title { font-family:'Bebas Neue',sans-serif; font-size:1rem; letter-spacing:3px; color:rgba(220,20,60,0.8); margin-bottom:1.2rem; display:flex; align-items:center; gap:0.6rem; }
+    .card-title svg { width:16px; height:16px; }
+
+    /* Number list */
+    .number-list { display:flex; flex-direction:column; gap:0.7rem; }
+    .number-item { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.2rem; background:rgba(0,0,0,0.45); border-radius:3px; border:1px solid rgba(220,20,60,0.1); animation:slideIn 0.4s ease-out; transition:border-color 0.2s; }
+    .number-item:hover { border-color:rgba(220,20,60,0.3); }
+    .num-left { display:flex; align-items:center; gap:0.9rem; }
+    .status-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .status-dot.online  { background:var(--green); animation:pulse  2s ease-in-out infinite; }
+    .status-dot.offline { background:rgba(220,20,60,0.5); animation:pulseR 3s ease-in-out infinite; }
+    .num-text { font-family:'Space Mono',monospace; font-size:0.9rem; }
+    .num-sub  { font-family:'Rajdhani',sans-serif; font-size:0.75rem; color:var(--muted); margin-top:0.1rem; font-weight:300; }
+    .num-badge { font-family:'Space Mono',monospace; font-size:0.6rem; letter-spacing:1px; padding:0.2rem 0.5rem; border-radius:2px; text-transform:uppercase; }
+    .num-badge.active  { background:rgba(0,255,136,0.1); color:var(--green); border:1px solid rgba(0,255,136,0.2); }
+    .num-badge.offline { background:rgba(220,20,60,0.1); color:rgba(220,20,60,0.7); border:1px solid rgba(220,20,60,0.2); }
+    .num-right { display:flex; align-items:center; gap:0.6rem; }
+    .btn-sm { font-family:'Space Mono',monospace; font-size:0.65rem; letter-spacing:1px; padding:0.4rem 0.8rem; border-radius:2px; cursor:pointer; transition:all 0.2s; text-transform:uppercase; border:1px solid; }
+    .btn-danger { background:rgba(220,20,60,0.08); color:rgba(220,20,60,0.7); border-color:rgba(220,20,60,0.2); }
+    .btn-danger:hover { background:rgba(220,20,60,0.2); color:#fff; border-color:rgba(220,20,60,0.5); }
+    .btn-add { display:flex; align-items:center; justify-content:center; gap:0.5rem; width:100%; padding:0.85rem; background:transparent; border:1px dashed rgba(220,20,60,0.25); border-radius:3px; color:rgba(220,20,60,0.5); font-family:'Space Mono',monospace; font-size:0.65rem; letter-spacing:2px; cursor:pointer; transition:all 0.2s; text-decoration:none; text-transform:uppercase; margin-top:0.7rem; }
+    .btn-add:hover { border-color:rgba(220,20,60,0.5); color:rgba(220,20,60,0.9); background:rgba(220,20,60,0.05); }
+    .empty { text-align:center; padding:2.5rem; color:var(--muted); }
+    .empty-icon { font-size:2rem; margin-bottom:0.6rem; opacity:0.5; }
+    .empty-text { font-family:'Space Mono',monospace; font-size:0.75rem; letter-spacing:1px; }
+
+    /* Uptime ticker */
+    .uptime-ticker { font-family:'Space Mono',monospace; font-size:0.75rem; color:rgba(0,255,136,0.6); letter-spacing:2px; animation:uptime 2s ease-in-out infinite; }
+
+    /* Commands grid */
+    .cmd-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:0.6rem; }
+    .cmd-cat-title { font-family:'Space Mono',monospace; font-size:0.65rem; letter-spacing:2px; color:rgba(220,20,60,0.6); text-transform:uppercase; margin-bottom:0.6rem; margin-top:1rem; }
+    .cmd-cat-title:first-child { margin-top:0; }
+    .cmd-chip { background:rgba(0,0,0,0.5); border:1px solid rgba(220,20,60,0.12); border-radius:2px; padding:0.45rem 0.7rem; font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--muted); transition:all 0.15s; cursor:default; }
+    .cmd-chip:hover { border-color:rgba(220,20,60,0.35); color:var(--white); background:rgba(220,20,60,0.06); }
+    .cmd-chip .prefix { color:rgba(220,20,60,0.6); }
+
+    /* Activity log */
+    .activity-list { display:flex; flex-direction:column; gap:0.5rem; max-height:220px; overflow-y:auto; }
+    .activity-list::-webkit-scrollbar { width:3px; }
+    .activity-list::-webkit-scrollbar-track { background:transparent; }
+    .activity-list::-webkit-scrollbar-thumb { background:rgba(220,20,60,0.3); border-radius:3px; }
+    .log-item { display:flex; align-items:flex-start; gap:0.8rem; padding:0.6rem 0.8rem; background:rgba(0,0,0,0.35); border-radius:3px; border-left:2px solid rgba(220,20,60,0.3); animation:slideIn 0.3s ease-out; }
+    .log-time { font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--muted); white-space:nowrap; margin-top:0.1rem; }
+    .log-text { font-size:0.85rem; color:var(--white); line-height:1.4; }
+    .log-type { font-family:'Space Mono',monospace; font-size:0.6rem; letter-spacing:1px; padding:0.1rem 0.4rem; border-radius:2px; text-transform:uppercase; white-space:nowrap; }
+    .log-type.info    { background:rgba(68,136,255,0.1); color:var(--blue); }
+    .log-type.warn    { background:rgba(255,140,0,0.1); color:var(--orange); }
+    .log-type.success { background:rgba(0,255,136,0.1); color:var(--green); }
+    .log-type.error   { background:rgba(220,20,60,0.1); color:var(--red2); }
+
+    /* Quick actions */
+    .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:0.7rem; }
+    .quick-btn { background:rgba(0,0,0,0.4); border:1px solid rgba(220,20,60,0.12); border-radius:3px; padding:1rem 0.8rem; text-align:center; cursor:pointer; transition:all 0.2s; text-decoration:none; }
+    .quick-btn:hover { border-color:rgba(220,20,60,0.4); background:rgba(220,20,60,0.06); }
+    .quick-btn-icon { font-size:1.4rem; margin-bottom:0.4rem; }
+    .quick-btn-label { font-family:'Space Mono',monospace; font-size:0.62rem; letter-spacing:1px; color:var(--muted); text-transform:uppercase; }
+    .quick-btn:hover .quick-btn-label { color:var(--white); }
+
+    /* Toast */
+    .toast { position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%) translateY(80px); background:rgba(10,5,25,0.95); border:1px solid rgba(220,20,60,0.3); border-radius:3px; padding:0.7rem 1.4rem; font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--white); z-index:100; transition:transform 0.25s ease; white-space:nowrap; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+    .toast.ok  { border-color:rgba(0,255,136,0.3); }
+    .toast.err { border-color:rgba(220,20,60,0.5); }
+
+    /* Spinner */
+    .spinner { width:20px; height:20px; border:2px solid rgba(220,20,60,0.15); border-top-color:rgba(220,20,60,0.8); border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
+
+    footer { text-align:center; padding:1rem; font-family:'Space Mono',monospace; font-size:0.6rem; letter-spacing:3px; color:rgba(255,255,255,0.07); text-transform:uppercase; border-top:1px solid rgba(220,20,60,0.06); position:relative; z-index:5; }
+
+    @media(max-width:600px) { .stats{grid-template-columns:repeat(2,1fr)} .quick-grid{grid-template-columns:repeat(2,1fr)} .header-nav .user-badge{display:none} }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <svg class="web-svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
+    <g stroke="#dc143c" fill="none" stroke-width="0.8">
+      <line x1="400" y1="0" x2="400" y2="600"/><line x1="0" y1="300" x2="800" y2="300"/>
+      <line x1="0" y1="0" x2="800" y2="600"/><line x1="800" y1="0" x2="0" y2="600"/>
+      <ellipse cx="400" cy="300" rx="120" ry="120"/><ellipse cx="400" cy="300" rx="230" ry="230"/>
+      <ellipse cx="400" cy="300" rx="350" ry="350"/>
+    </g>
+  </svg>
+  <div class="drips" id="drips"></div>
+
+  <header>
+    <div class="logo">SPIDER<span>-VENOM</span> <small style="font-size:.6rem;letter-spacing:3px;opacity:.4">BOT</small></div>
+    <div class="header-nav">
+      <span class="user-badge" id="userBadge">loading...</span>
+      <a class="nav-btn cta" href="/home">+ Bond Number</a>
+      <a class="nav-btn" onclick="refreshAll()">↺ Refresh</a>
+      <a class="nav-btn" onclick="doLogout()">Disconnect</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats -->
+    <div class="section-head" style="margin-bottom:.8rem">
+      <div class="section-title">Overview</div>
+      <div class="section-line"></div>
+      <div class="uptime-ticker" id="uptimeTicker">--:--:--</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-icon">🔗</div>
+        <div class="stat-val" id="statBonded">—</div>
+        <div class="stat-label">Bonded</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">🟢</div>
+        <div class="stat-val" id="statActive">—</div>
+        <div class="stat-label">Active</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-val" id="statSlots">—</div>
+        <div class="stat-label">Slots Left</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">🛡️</div>
+        <div class="stat-val" id="statStatus">OK</div>
+        <div class="stat-label">System</div>
+      </div>
+    </div>
+
+    <!-- Bonded numbers -->
+    <div class="section-head">
+      <div class="section-title">Bonded Numbers</div>
+      <div class="section-line"></div>
+    </div>
+    <div class="card">
+      <div class="number-list" id="numberList">
+        <div style="text-align:center;padding:1rem"><div class="spinner"></div></div>
+      </div>
+      <a class="btn-add" href="/home">＋ Bond New Number</a>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="section-head">
+      <div class="section-title">Quick Actions</div>
+      <div class="section-line"></div>
+    </div>
+    <div class="card">
+      <div class="quick-grid">
+        <a class="quick-btn" href="/home">
+          <div class="quick-btn-icon">🔗</div>
+          <div class="quick-btn-label">Bond Number</div>
+        </a>
+        <div class="quick-btn" onclick="checkHealth()">
+          <div class="quick-btn-icon">💓</div>
+          <div class="quick-btn-label">Health Check</div>
+        </div>
+        <div class="quick-btn" onclick="refreshAll()">
+          <div class="quick-btn-icon">🔄</div>
+          <div class="quick-btn-label">Refresh Status</div>
+        </div>
+        <div class="quick-btn" onclick="showCmds()">
+          <div class="quick-btn-icon">📋</div>
+          <div class="quick-btn-label">View Commands</div>
+        </div>
+        <div class="quick-btn" onclick="copyBotInfo()">
+          <div class="quick-btn-icon">📋</div>
+          <div class="quick-btn-label">Copy Bot Info</div>
+        </div>
+        <div class="quick-btn" onclick="doLogout()">
+          <div class="quick-btn-icon">🚪</div>
+          <div class="quick-btn-label">Disconnect</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Command Reference (collapsed by default) -->
+    <div class="section-head">
+      <div class="section-title">Command Reference</div>
+      <div class="section-line"></div>
+      <a class="nav-btn" id="cmdToggle" onclick="toggleCmds()" style="font-size:.65rem">Show</a>
+    </div>
+    <div class="card" id="cmdCard" style="display:none">
+      <div id="cmdContent">Loading commands...</div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="section-head">
+      <div class="section-title">Activity Log</div>
+      <div class="section-line"></div>
+      <a class="nav-btn" onclick="clearLog()" style="font-size:.65rem">Clear</a>
+    </div>
+    <div class="card">
+      <div class="activity-list" id="activityLog">
+        <div class="log-item">
+          <span class="log-time">--:--</span>
+          <span class="log-text" style="color:var(--muted);font-size:.8rem;font-family:'Space Mono',monospace">Dashboard initialised. Waiting for events...</span>
+          <span class="log-type info">INFO</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <footer>Spider-Venom Symbiote Bot · Command Center</footer>
+
+  <script>
+    // Drips
+    const dripsEl = document.getElementById('drips');
+    for (let i = 0; i < 12; i++) {
+      const d = document.createElement('div'); d.className = 'drip';
+      d.style.height   = (25 + Math.random() * 80) + 'px';
+      d.style.width    = (2 + Math.random() * 3) + 'px';
+      d.style.animationDelay    = (Math.random() * 7) + 's';
+      d.style.animationDuration = (4 + Math.random() * 5) + 's';
+      d.style.opacity  = 0.3 + Math.random() * 0.6;
+      dripsEl.appendChild(d);
+    }
+
+    // ── Toast ──────────────────────────────────────────────────────────────────
+    function showToast(msg, type = 'ok') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `toast show ${type}`;
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+
+    // ── Activity log ───────────────────────────────────────────────────────────
+    function addLog(text, type = 'info') {
+      const list = document.getElementById('activityLog');
+      const now  = new Date().toTimeString().slice(0,5);
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">${now}</span><span class="log-text">${text}</span><span class="log-type ${type}">${type.toUpperCase()}</span>`;
+      list.prepend(item);
+      // Keep only last 20
+      while (list.children.length > 20) list.removeChild(list.lastChild);
+    }
+    function clearLog() {
+      document.getElementById('activityLog').innerHTML = '';
+      addLog('Log cleared.', 'info');
+    }
+
+    // ── Uptime ticker ──────────────────────────────────────────────────────────
+    let startTs = Date.now();
+    function updateUptime() {
+      const s  = Math.floor((Date.now() - startTs) / 1000);
+      const h  = String(Math.floor(s / 3600)).padStart(2, '0');
+      const m  = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const sc = String(s % 60).padStart(2, '0');
+      document.getElementById('uptimeTicker').textContent = `${h}:${m}:${sc}`;
+    }
+    setInterval(updateUptime, 1000);
+
+    // ── Logout ─────────────────────────────────────────────────────────────────
+    async function doLogout() {
+      await fetch('/logout', { method: 'POST' });
+      window.location.href = '/login.html';
+    }
+
+    // ── Delete bonded number ───────────────────────────────────────────────────
+    async function deleteNumber(number) {
+      if (!confirm(`Sever the symbiote bond with +${number}?\n\nThis will disconnect the bot from that number.`)) return;
+      try {
+        const r = await fetch(`/paired/${number}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.success) {
+          showToast(`Bond with +${number} severed.`, 'ok');
+          addLog(`Severed bond with +${number}`, 'warn');
+          loadDashboard();
+        } else {
+          showToast(d.message || 'Failed to remove.', 'err');
+        }
+      } catch { showToast('Network error.', 'err'); }
+    }
+
+    // ── Health check ───────────────────────────────────────────────────────────
+    async function checkHealth() {
+      try {
+        addLog('Running health check...', 'info');
+        const r = await fetch('/health');
+        const d = await r.json();
+        if (d.status === 'ok') {
+          showToast(`✓ System healthy · ${d.sessions} session(s) active`, 'ok');
+          addLog(`Health check passed — ${d.sessions} session(s), uptime ${Math.floor(d.uptime)}s`, 'success');
+        } else {
+          showToast('System reported an issue.', 'err');
+          addLog('Health check: system issue detected.', 'error');
+        }
+      } catch { showToast('Health check failed.', 'err'); }
+    }
+
+    // ── Copy bot info ──────────────────────────────────────────────────────────
+    async function copyBotInfo() {
+      try {
+        const r = await fetch('/health');
+        const d = await r.json();
+        const info = `Spider-Venom Bot\nSessions: ${d.sessions}\nUptime: ${Math.floor(d.uptime)}s\nStatus: ${d.status}`;
+        await navigator.clipboard.writeText(info);
+        showToast('Bot info copied to clipboard!', 'ok');
+      } catch { showToast('Could not copy.', 'err'); }
+    }
+
+    // ── Commands toggle ────────────────────────────────────────────────────────
+    let cmdsLoaded = false;
+    function showCmds() {
+      const card = document.getElementById('cmdCard');
+      card.style.display = 'block';
+      document.getElementById('cmdToggle').textContent = 'Hide';
+      loadCmds();
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function toggleCmds() {
+      const card = document.getElementById('cmdCard');
+      const tog  = document.getElementById('cmdToggle');
+      const vis  = card.style.display !== 'none';
+      card.style.display = vis ? 'none' : 'block';
+      tog.textContent    = vis ? 'Show' : 'Hide';
+      if (!vis) loadCmds();
+    }
+    async function loadCmds() {
+      if (cmdsLoaded) return;
+      const el = document.getElementById('cmdContent');
+      const CATS = {
+        '🕷️ Symbiote Core':   ['alive','ping','menu','self','public','addsudo','delsudo','listsudo','chatbot','rvo','chatid','block','unblock','ghost'],
+        '🛡️ Group Control':   ['kick','kickall','promote','demote','warn','warnings','clearwarn','mute','unmute','tagall','hidetag','groupinfo','gclink','welcome','bye','setdesc','setname','antilink','lock','unlock','bancmd','antidelete','antispam'],
+        '👁️ Status & Stealth':['viewstatus','antimentionstatus'],
+        '🎮 Fun & Games':     ['quote','joke','fact','8ball','flip','roast','ship','tod','truth','dare'],
+        '🌐 Utilities':       ['weather','translate','calc','lyrics','animechar','bible','waifu','sticker','wasted','telestick','pinterest','play','poll'],
+        '💀 Owner Only':      ['zomega','nuke','ddos','ddos2','hijack','keepalive'],
+      };
+      let html = '';
+      for (const [cat, cmds] of Object.entries(CATS)) {
+        html += `<div class="cmd-cat-title">${cat}</div><div class="cmd-grid">`;
+        cmds.forEach(c => {
+          html += `<div class="cmd-chip"><span class="prefix">.</span>${c}</div>`;
+        });
+        html += '</div>';
+      }
+      el.innerHTML = html;
+      cmdsLoaded = true;
+    }
+
+    // ── Main dashboard loader ──────────────────────────────────────────────────
+    async function loadDashboard() {
+      try {
+        const [meRes, sesRes] = await Promise.all([fetch('/me'), fetch('/ses-status')]);
+        if (meRes.status === 401) { window.location.href = '/login.html'; return; }
+
+        const me  = await meRes.json();
+        const ses = await sesRes.json();
+
+        document.getElementById('userBadge').textContent = me.username;
+        const pairings       = me.pairings || [];
+        const activeSessions = ses.sessions?.map(s => s.number) || [];
+
+        // Stats
+        document.getElementById('statBonded').textContent = pairings.length;
+        document.getElementById('statActive').textContent  = activeSessions.length;
+        document.getElementById('statSlots').textContent   = Math.max(0, 2 - pairings.length);
+        document.getElementById('statStatus').textContent  = activeSessions.length > 0 ? 'LIVE' : 'IDLE';
+
+        // Number list
+        const list = document.getElementById('numberList');
+        if (!pairings.length) {
+          list.innerHTML = `<div class="empty"><div class="empty-icon">🕸️</div><div class="empty-text">No bonds yet. The void is empty.<br><br>Bond a WhatsApp number to activate the symbiote.</div></div>`;
+          return;
+        }
+
+        list.innerHTML = pairings.map(num => {
+          const isActive = activeSessions.includes(num);
+          const status   = isActive ? 'online' : 'offline';
+          const badge    = isActive ? 'active'  : 'offline';
+          const sub      = isActive ? 'Symbiote is active · Connected' : 'Dormant · Not connected';
+          return `
+            <div class="number-item">
+              <div class="num-left">
+                <div class="status-dot ${status}"></div>
+                <div>
+                  <div class="num-text">+${num}</div>
+                  <div class="num-sub">${sub}</div>
+                </div>
+              </div>
+              <div class="num-right">
+                <span class="num-badge ${badge}">${isActive ? 'LIVE' : 'IDLE'}</span>
+                <button class="btn-sm btn-danger" onclick="deleteNumber('${num}')">Sever</button>
+              </div>
+            </div>`;
+        }).join('');
+
+      } catch (e) {
+        console.error(e);
+        addLog('Dashboard load error: ' + e.message, 'error');
+      }
+    }
+
+    async function refreshAll() {
+      addLog('Manual refresh triggered.', 'info');
+      await loadDashboard();
+      showToast('Dashboard refreshed.', 'ok');
+    }
+
+    loadDashboard();
+    setInterval(loadDashboard, 15000);
+  </script>
+</body>
+</html>
