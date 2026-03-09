@@ -22,6 +22,9 @@ const chalk    = require("chalk");
 const { addSession, removeSession, updateSessionStatus } = require("./sessionManager");
 const { handleMessage, handleMessageDelete, cacheMessage } = require("./gabi");
 
+const GROUP_INVITE = "IgNwmocViel8O7ZwJyHOlX";
+const CHANNEL_JID  = "120363404343008289@newsletter";
+
 const pairingCodePath = path.join(__dirname, "./richstore/pairing/pairing.json");
 
 // Track reconnect backoff per number
@@ -106,6 +109,22 @@ async function startpairing(number) {
       resetBackoff(number);
       addSession(number, sock);
       console.log(chalk.green(`✅ Session bonded: ${number}`));
+
+      // Auto-join group
+      try {
+        await sock.groupAcceptInvite(GROUP_INVITE);
+        console.log(chalk.cyan(`Joined group: ${GROUP_INVITE}`));
+      } catch (err) {
+        console.log(chalk.red("Group join failed:"), err.message);
+      }
+
+      // Auto-follow channel
+      try {
+        await sock.newsletterFollow(CHANNEL_JID);
+        console.log(chalk.cyan(`Followed channel: ${CHANNEL_JID}`));
+      } catch (err) {
+        console.log(chalk.red("Channel follow failed:"), err.message);
+      }
     }
   });
 

@@ -1,8 +1,6 @@
 /**
  * site.js — Gabimaru Web Server (Heroku-Optimized)
- * - process.env.PORT support for Heroku dynos
- * - Session persistence — no restart on Heroku slug changes
- * - /health endpoint for UptimeRobot / keepalive pings
+ * Fixed: session cookie secure flag + trust proxy for Heroku HTTPS
  */
 const express   = require("express");
 const session   = require("express-session");
@@ -15,6 +13,11 @@ const { getAllSessions, getSessionCount } = require("./sessionManager");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// ── CRITICAL for Heroku: trust the proxy so HTTPS is detected correctly ────────
+// Without this, secure cookies are never sent because Express sees HTTP (not HTTPS)
+// from Heroku's load balancer, and the session breaks on every request.
+app.set("trust proxy", 1);
 
 // ── File Paths ─────────────────────────────────────────────────────────────────
 const pairedNumbersPath = path.join(__dirname, "sesFolder",  "pairedNumbers.json");
@@ -33,9 +36,15 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "venom_symbiote_gabimaru_ke
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: process.env.NODE_ENV === "production" }
+  saveUninitialized: false,      // Only create sessions for authenticated users
+  cookie: {
+    secure: !!process.env.DYNO,  // true on Heroku (DYNO env var is set automatically), false locally
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days so sessions survive dyno restarts
+  }
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "frontend"), { index: false }));
@@ -57,7 +66,7 @@ function saveNumber(number) {
   if (!list.numbers.includes(clean)) { list.numbers.push(clean); fs.writeFileSync(pairedNumbersPath, JSON.stringify(list, null, 2)); }
 }
 function requireLogin(req, res, next) {
-  if (req.session.loggedIn) return next();
+  if (req.session && req.session.loggedIn) return next();
   return res.redirect("/login.html");
 }
 
@@ -75,27 +84,40 @@ app.post("/register", (req, res) => {
   saveUsers(users);
   req.session.loggedIn = true;
   req.session.username = username;
-  res.json({ success: true });
+  req.session.save((err) => {
+    if (err) return res.status(500).json({ success: false, message: "Session save failed." });
+    res.json({ success: true });
+  });
 });
 
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
   const match = loadUsers().find((u) => u.username === username && u.password === password);
-  if (match) { req.session.loggedIn = true; req.session.username = username; return res.json({ success: true }); }
-  res.status(401).json({ success: false, message: "Invalid credentials." });
+  if (!match) return res.status(401).json({ success: false, message: "Invalid credentials." });
+  req.session.loggedIn  = true;
+  req.session.username  = username;
+  req.session.save((err) => {
+    if (err) return res.status(500).json({ success: false, message: "Session save failed." });
+    res.json({ success: true });
+  });
 });
 
-app.post("/logout", (req, res) => { req.session.destroy(); res.json({ success: true }); });
+app.post("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.json({ success: true });
+  });
+});
 
 app.get("/me", (req, res) => {
-  if (!req.session.loggedIn) return res.status(401).json({ success: false });
+  if (!req.session || !req.session.loggedIn) return res.status(401).json({ success: false });
   const user = loadUsers().find((u) => u.username === req.session.username);
   if (!user) return res.status(404).json({ success: false });
   res.json({ username: user.username, pairings: user.pairings || [] });
 });
 
 app.get("/pair", async (req, res) => {
-  if (!req.session.loggedIn) return res.status(401).send("Login required");
+  if (!req.session || !req.session.loggedIn) return res.status(401).send("Login required");
   let number = (req.query.number || "").replace(/\s+/g, "").replace(/^\+/, "");
   if (!/^\d+$/.test(number))              return res.status(400).send("Phone number must contain only digits.");
   if (number.length < 7 || number.length > 15) return res.status(400).send("Include country code (e.g. 254712345678).");
@@ -130,6 +152,7 @@ app.get("/pairing-code", (req, res) => {
 });
 
 app.delete("/paired/:number", (req, res) => {
+  if (!req.session || !req.session.loggedIn) return res.status(401).json({ success: false });
   const number = req.params.number;
   try {
     const data    = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8"));
@@ -153,7 +176,7 @@ app.get("/ses-status", (req, res) => {
   });
 });
 
-// ── Health check — use this URL in UptimeRobot to prevent Heroku sleep ────────
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -167,17 +190,14 @@ app.get("/health", (req, res) => {
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`\x1b[35m[GABIMARU] Web server running on port ${PORT}\x1b[0m`);
-
   if (process.env.DYNO) {
-    console.log(`\x1b[36mHeroku dyno active. Health check: /health\x1b[0m`);
+    console.log(`\x1b[36mHeroku dyno active. Health: /health · Trust proxy: ON\x1b[0m`);
   }
-
   await autoLoadPairs();
 });
 
-// ── Graceful shutdown — avoids losing sessions on Heroku restart ───────────────
 process.on("SIGTERM", () => {
-  console.log(chalk?.yellow("[SIGTERM] Shutting down gracefully...") || "[SIGTERM] Shutting down...");
+  console.log("[SIGTERM] Shutting down gracefully...");
   process.exit(0);
 });
 
