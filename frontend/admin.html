@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spider Admin — Owner Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --surface3: #22222f;
+      --border: #2a2a3a;
+      --border2: #353548;
+      --red: #ff4d6d;
+      --red-dim: rgba(255,77,109,0.12);
+      --green: #00e676;
+      --green-dim: rgba(0,230,118,0.1);
+      --amber: #ffd60a;
+      --amber-dim: rgba(255,214,10,0.1);
+      --blue: #4fc3f7;
+      --blue-dim: rgba(79,195,247,0.1);
+      --purple: #b388ff;
+      --purple-dim: rgba(179,136,255,0.1);
+      --text: #e8e8f0;
+      --text2: #8888aa;
+      --text3: #555570;
+      --accent: #ff4d6d;
+      --accent2: #b388ff;
+      --glow: 0 0 20px rgba(255,77,109,0.3);
+      --glow2: 0 0 20px rgba(179,136,255,0.2);
+      --radius: 12px;
+    }
+
+    @keyframes fadeIn   { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+    @keyframes glitch   { 0%,100%{clip-path:inset(0 0 98% 0)} 10%{clip-path:inset(20% 0 60% 0)} 20%{clip-path:inset(50% 0 30% 0)} 30%{clip-path:inset(10% 0 85% 0)} 40%{clip-path:inset(70% 0 5% 0)} 50%{clip-path:inset(35% 0 50% 0)} 60%{clip-path:inset(80% 0 0% 0)} 70%{clip-path:inset(5% 0 90% 0)} 80%{clip-path:inset(45% 0 40% 0)} 90%{clip-path:inset(15% 0 75% 0)} }
+    @keyframes scanline { 0%{top:-10%} 100%{top:110%} }
+    @keyframes pulse-border { 0%,100%{border-color:rgba(255,77,109,0.3)} 50%{border-color:rgba(255,77,109,0.8)} }
+    @keyframes spin     { to{transform:rotate(360deg)} }
+    @keyframes shimmer  { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+    @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    /* ─── LOCK SCREEN ─────────────────────────────────────────────── */
+    #lockScreen {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      flex-direction: column;
+      gap: 0;
+    }
+    #lockScreen::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(255,77,109,0.08) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 100%, rgba(179,136,255,0.06) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    .lock-scanline {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(255,77,109,0.4), transparent);
+      animation: scanline 4s linear infinite;
+      pointer-events: none;
+    }
+    .lock-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 48px 44px;
+      width: 100%;
+      max-width: 400px;
+      position: relative;
+      animation: fadeIn 0.6s ease;
+      box-shadow: 0 0 60px rgba(0,0,0,0.5), var(--glow);
+    }
+    .lock-box::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 21px;
+      background: linear-gradient(135deg, rgba(255,77,109,0.3), transparent 50%, rgba(179,136,255,0.2));
+      z-index: -1;
+      animation: pulse-border 3s ease infinite;
+    }
+    .lock-icon {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, var(--red), #c2185b);
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 24px;
+      box-shadow: var(--glow);
+    }
+    .lock-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+    .lock-sub {
+      font-size: 13px;
+      color: var(--text2);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .lock-input-wrap { position: relative; margin-bottom: 16px; }
+    .lock-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 48px 14px 16px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .lock-input:focus {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(255,77,109,0.15);
+    }
+    .lock-input.error { border-color: var(--red); animation: shake 0.4s; }
+    .lock-input.error::placeholder { color: var(--red); }
+    .eye-btn {
+      position: absolute; right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      cursor: pointer; color: var(--text3);
+      font-size: 18px;
+      transition: color 0.2s;
+    }
+    .eye-btn:hover { color: var(--text); }
+    .lock-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--red), #c2185b);
+      border: none; border-radius: 10px;
+      padding: 14px;
+      color: white;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: var(--glow);
+      margin-top: 4px;
+    }
+    .lock-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .lock-btn:active { transform: translateY(0); }
+    .lock-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .lock-err {
+      font-size: 12px; color: var(--red);
+      text-align: center; margin-top: 12px;
+      min-height: 18px; font-weight: 600;
+    }
+    .lock-footer {
+      font-size: 11px; color: var(--text3);
+      text-align: center; margin-top: 24px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    @keyframes shake {
+      0%,100%{transform:none} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)}
+    }
+
+    /* ─── ADMIN DASHBOARD ─────────────────────────────────────────── */
+    #adminDash { display: none; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 230px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 40;
+      transition: transform 0.3s;
+    }
+    .sidebar-top {
+      padding: 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--red), #c2185b);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 12px rgba(255,77,109,0.4);
+      flex-shrink: 0;
+    }
+    .logo-text { font-weight: 700; font-size: 15px; line-height: 1.2; }
+    .logo-badge {
+      font-size: 9px; color: var(--red);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700; letter-spacing: 1px;
+      background: var(--red-dim);
+      padding: 2px 6px; border-radius: 4px;
+      margin-top: 2px; display: inline-block;
+    }
+    .nav { padding: 10px 8px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; font-weight: 600;
+      color: var(--text2); background: none; border: none;
+      width: 100%; text-align: left;
+      transition: all 0.15s;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--red-dim); color: var(--red); }
+    .nav-item .ni { font-size: 16px; flex-shrink: 0; width: 20px; }
+    .nav-sep { height: 1px; background: var(--border); margin: 8px 12px; }
+    .sidebar-foot {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .owner-badge {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; font-weight: 600;
+    }
+    .owner-dot {
+      width: 8px; height: 8px; background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+    }
+    .logout-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+      color: var(--text3); cursor: pointer;
+      font-size: 12px; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* Content */
+    .content { margin-left: 230px; padding: 28px 32px; min-height: 100vh; }
+    .page-header { margin-bottom: 28px; animation: fadeIn 0.4s ease; }
+    .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+    .page-title span { color: var(--red); }
+    .page-sub { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+    .page { display: none; animation: fadeIn 0.3s ease; }
+    .page.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 15px; font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .card-sub { font-size: 12px; color: var(--text2); margin-bottom: 18px; }
+
+    /* Grid */
+    .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 20px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+
+    /* Stat Cards */
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .stat:hover { border-color: var(--border2); }
+    .stat::before {
+      content: '';
+      position: absolute; top: 0; right: 0;
+      width: 60px; height: 60px;
+      border-radius: 0 12px 0 60px;
+      opacity: 0.08;
+    }
+    .stat.red::before   { background: var(--red); }
+    .stat.green::before { background: var(--green); }
+    .stat.amber::before { background: var(--amber); }
+    .stat.purple::before { background: var(--purple); }
+    .stat-icon { font-size: 20px; margin-bottom: 10px; }
+    .stat-val  { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; line-height: 1; }
+    .stat-val.red    { color: var(--red); }
+    .stat-val.green  { color: var(--green); }
+    .stat-val.amber  { color: var(--amber); }
+    .stat-val.purple { color: var(--purple); }
+    .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; font-weight: 600; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 16px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      border: none; transition: all 0.15s;
+    }
+    .btn-red    { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,77,109,0.3); }
+    .btn-red:hover { background: var(--red); color: white; }
+    .btn-green  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+    .btn-green:hover { background: var(--green); color: #000; }
+    .btn-amber  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,214,10,0.3); }
+    .btn-amber:hover { background: var(--amber); color: #000; }
+    .btn-ghost  { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Badges */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 8px; border-radius: 20px;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .badge-red    { background: var(--red-dim); color: var(--red); }
+    .badge-green  { background: var(--green-dim); color: var(--green); }
+    .badge-amber  { background: var(--amber-dim); color: var(--amber); }
+    .badge-purple { background: var(--purple-dim); color: var(--purple); }
+    .badge-blue   { background: var(--blue-dim); color: var(--blue); }
+
+    /* Table */
+    .table { width: 100%; border-collapse: collapse; }
+    .table th {
+      text-align: left; padding: 10px 14px;
+      font-size: 11px; color: var(--text3);
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .table tr:last-child td { border-bottom: none; }
+    .table tr:hover td { background: var(--surface2); }
+    .table code {
+      background: var(--surface2); padding: 2px 8px;
+      border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--blue);
+    }
+
+    /* Inputs */
+    .input {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    .input:focus { border-color: var(--red); }
+    .input-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+    .input-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+    .input-label { font-size: 12px; font-weight: 600; color: var(--text2); }
+
+    /* Toggle */
+    .toggle {
+      width: 44px; height: 24px;
+      background: var(--surface3);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle::after {
+      content: '';
+      position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--text3);
+      transition: all 0.2s;
+    }
+    .toggle.on { background: var(--red-dim); border-color: var(--red); }
+    .toggle.on::after { transform: translateX(20px); background: var(--red); }
+
+    /* Setting row */
+    .setting-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .setting-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .setting-info h4 { font-size: 14px; font-weight: 600; }
+    .setting-info p  { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+    /* Log / Console */
+    .console {
+      background: #050508;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      height: 320px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .console::-webkit-scrollbar { width: 4px; }
+    .console::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-entry { display: flex; gap: 10px; }
+    .log-time { color: var(--text3); flex-shrink: 0; }
+    .log-msg.info    { color: var(--blue); }
+    .log-msg.success { color: var(--green); }
+    .log-msg.warn    { color: var(--amber); }
+    .log-msg.error   { color: var(--red); }
+    .log-msg.cmd     { color: var(--purple); }
+
+    /* Block list */
+    .block-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .block-item:last-child { border-bottom: none; }
+    .block-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; font-weight: 600;
+    }
+    .block-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+    /* Session card */
+    .session-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+    }
+    .session-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px; font-weight: 700;
+    }
+    .session-status { font-size: 12px; color: var(--text2); margin-top: 3px; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block; margin-right: 5px;
+    }
+    .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot-red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+    /* Broadcast */
+    .broadcast-area {
+      width: 100%;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 100px;
+      outline: none;
+    }
+    .broadcast-area:focus { border-color: var(--red); }
+
+    /* Spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 13px; font-weight: 600;
+      opacity: 0; transform: translateY(8px);
+      transition: all 0.3s;
+      z-index: 999;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      max-width: 320px;
+    }
+    .toast.show { opacity: 1; transform: none; }
+    .toast.ok  { border-color: var(--green); color: var(--green); }
+    .toast.err { border-color: var(--red);   color: var(--red); }
+    .toast.warn{ border-color: var(--amber); color: var(--amber); }
+
+    /* Uptime blink cursor */
+    .cursor { animation: blink 1s step-end infinite; color: var(--red); }
+
+    /* Mobile */
+    @media (max-width: 900px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: none; }
+      .content { margin-left: 0; padding: 20px 16px; }
+      .grid-4 { grid-template-columns: repeat(2,1fr); }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .hamburger { display: flex; }
+    }
+    .hamburger {
+      display: none; position: fixed; top: 14px; left: 14px;
+      z-index: 60; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px; cursor: pointer; flex-direction: column; gap: 4px;
+    }
+    .hamburger span { width: 18px; height: 2px; background: var(--text); border-radius: 1px; }
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 35;
+    }
+    .overlay.show { display: block; }
+
+    /* Danger zone */
+    .danger-zone {
+      border: 1px solid rgba(255,77,109,0.3);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      background: rgba(255,77,109,0.04);
+    }
+    .danger-title { color: var(--red); font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+
+    /* Command ban row */
+    .cmd-ban-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px;
+    }
+    .cmd-ban-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; flex: 1;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ LOCK SCREEN ═══ -->
+<div id="lockScreen">
+  <div class="lock-scanline"></div>
+  <div class="lock-box">
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">ADMIN ACCESS</div>
+    <div class="lock-sub">Spider-Venom Owner Panel · Restricted Area</div>
+    <div class="lock-input-wrap">
+      <input class="lock-input" id="pinInput" type="password"
+        placeholder="Enter admin password"
+        autocomplete="off" spellcheck="false"
+        onkeypress="if(event.key==='Enter')doLogin()">
+      <button class="eye-btn" onclick="toggleEye()" id="eyeBtn">👁</button>
+    </div>
+    <button class="lock-btn" id="loginBtn" onclick="doLogin()">AUTHENTICATE →</button>
+    <div class="lock-err" id="lockErr"></div>
+    <div class="lock-footer">🕷️ SPIDER-VENOM v4 · OWNER ONLY</div>
+  </div>
+</div>
+
+<!-- ═══ ADMIN DASHBOARD ═══ -->
+<div id="adminDash">
+  <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="logo-row">
+        <div class="logo-icon">🕷️</div>
+        <div>
+          <div class="logo-text">Spider Admin</div>
+          <div class="logo-badge">OWNER PANEL</div>
+        </div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" onclick="goPage('overview',this)"><span class="ni">📊</span> Overview</button>
+      <button class="nav-item" onclick="goPage('sessions',this)"><span class="ni">📱</span> Sessions</button>
+      <button class="nav-item" onclick="goPage('broadcast',this)"><span class="ni">📢</span> Broadcast</button>
+      <div class="nav-sep"></div>
+      <button class="nav-item" onclick="goPage('blocklist',this)"><span class="ni">🚫</span> Block List</button>
+      <button class="nav-item" onclick="goPage('sudo',this)"><span class="ni">👑</span> Sudo Users</button>
+      <button class="nav-item" onclick="goPage('cmdbans',this)"><span class="ni">🔒</span> Command Bans</button>
+      <div class="nav-sep"></div>
+      <button class="nav-item" onclick="goPage('settings',this)"><span class="ni">⚙️</span> Bot Settings</button>
+      <button class="nav-item" onclick="goPage('console',this)"><span class="ni">🖥️</span> Live Console</button>
+      <button class="nav-item" onclick="goPage('danger',this)"><span class="ni">⚠️</span> Danger Zone</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="owner-badge">
+        <div class="owner-dot"></div>
+        <span>Owner</span>
+      </div>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="page-header">
+      <div class="page-title" id="pageTitle">Overview <span>Dashboard</span></div>
+      <div class="page-sub" id="pageSub">Real-time bot metrics and controls</div>
+    </div>
+
+    <!-- ══ OVERVIEW ══ -->
+    <div class="page active" id="page-overview">
+      <div class="grid-4">
+        <div class="stat green">
+          <div class="stat-icon">🟢</div>
+          <div class="stat-val green" id="statSessions">—</div>
+          <div class="stat-label">Active Sessions</div>
+        </div>
+        <div class="stat red">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-val red" id="statUptime">—</div>
+          <div class="stat-label">Uptime</div>
+        </div>
+        <div class="stat amber">
+          <div class="stat-icon">📱</div>
+          <div class="stat-val amber" id="statNumbers">—</div>
+          <div class="stat-label">Paired Numbers</div>
+        </div>
+        <div class="stat purple">
+          <div class="stat-icon">🧩</div>
+          <div class="stat-val purple" id="statCmds">—</div>
+          <div class="stat-label">Commands Loaded</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">⚡ Quick Actions</div>
+          <div class="card-sub">Instant bot controls</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn btn-green" onclick="adminAction('restart')">🔄 Restart Bot</button>
+            <button class="btn btn-amber" onclick="adminAction('reload-plugins')">🔃 Reload Plugins</button>
+            <button class="btn btn-ghost" onclick="adminAction('clear-cache')">🧹 Clear Cache</button>
+            <button class="btn btn-red" onclick="adminAction('stop')">⛔ Stop Bot</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🩺 Health Check</div>
+          <div class="card-sub">Server and bot diagnostics</div>
+          <div id="healthDisplay" style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:2;color:var(--text2)">
+            Click below to run check...
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="runHealth()">Run Health Check</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📱 Connected Sessions</div>
+        <div class="card-sub">Live session overview</div>
+        <div id="overviewSessions">
+          <div style="color:var(--text3);font-size:13px">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SESSIONS ══ -->
+    <div class="page" id="page-sessions">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div>
+            <div class="card-title">📱 Session Manager</div>
+            <div class="card-sub">Manage all paired WhatsApp numbers</div>
+          </div>
+          <button class="btn btn-green btn-sm" onclick="goPublic()">＋ Pair New</button>
+        </div>
+        <div id="sessionList">
+          <div style="color:var(--text3);font-size:13px">Loading sessions...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ BROADCAST ══ -->
+    <div class="page" id="page-broadcast">
+      <div class="card">
+        <div class="card-title">📢 Broadcast Message</div>
+        <div class="card-sub">Send a message to all groups or specific targets</div>
+        <div class="input-group" style="margin-bottom:14px">
+          <label class="input-label">Target</label>
+          <select class="input" id="broadcastTarget">
+            <option value="all">All Groups</option>
+            <option value="dm">All DMs / Saved Contacts</option>
+          </select>
+        </div>
+        <div class="input-group" style="margin-bottom:14px">
+          <label class="input-label">Message</label>
+          <textarea class="broadcast-area" id="broadcastMsg" placeholder="Type your broadcast message here..."></textarea>
+        </div>
+        <button class="btn btn-red" onclick="sendBroadcast()">📢 Send Broadcast</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⏰ Scheduled Messages</div>
+        <div class="card-sub">Queue messages to send at a specific time</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label class="input-label">JID / Group ID</label>
+            <input class="input" id="schedJid" placeholder="e.g. 120363...@g.us">
+          </div>
+          <div class="input-group" style="max-width:160px">
+            <label class="input-label">Send At</label>
+            <input class="input" type="datetime-local" id="schedTime">
+          </div>
+        </div>
+        <div class="input-group" style="margin-bottom:14px">
+          <label class="input-label">Message</label>
+          <textarea class="broadcast-area" id="schedMsg" placeholder="Scheduled message..." style="min-height:70px"></textarea>
+        </div>
+        <button class="btn btn-amber" onclick="scheduleMsg()">⏰ Schedule</button>
+        <div id="schedList" style="margin-top:16px"></div>
+      </div>
+    </div>
+
+    <!-- ══ BLOCK LIST ══ -->
+    <div class="page" id="page-blocklist">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div>
+            <div class="card-title">🚫 Block List</div>
+            <div class="card-sub">Numbers blocked from using the bot</div>
+          </div>
+          <button class="btn btn-red btn-sm" onclick="showBlockAdd()">＋ Block Number</button>
+        </div>
+        <div id="blockAddRow" style="display:none;margin-bottom:16px">
+          <div class="input-row">
+            <div class="input-group">
+              <label class="input-label">Phone Number (with country code)</label>
+              <input class="input" id="blockNumInput" placeholder="e.g. 254712345678">
+            </div>
+            <button class="btn btn-red" onclick="addBlock()">Block</button>
+          </div>
+        </div>
+        <div id="blockList">
+          <div style="color:var(--text3);font-size:13px">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SUDO ══ -->
+    <div class="page" id="page-sudo">
+      <div class="card">
+        <div class="card-title">👑 Sudo Users</div>
+        <div class="card-sub">Users with elevated bot permissions</div>
+        <div class="input-row" style="margin-bottom:6px">
+          <div class="input-group">
+            <label class="input-label">Add Sudo Number</label>
+            <input class="input" id="sudoInput" placeholder="e.g. 254712345678">
+          </div>
+          <button class="btn btn-amber" onclick="addSudo()">Add</button>
+        </div>
+        <div id="sudoList" style="margin-top:16px">
+          <div style="color:var(--text3);font-size:13px">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CMD BANS ══ -->
+    <div class="page" id="page-cmdbans">
+      <div class="card">
+        <div class="card-title">🔒 Command Bans</div>
+        <div class="card-sub">Block specific commands globally or per group</div>
+        <div class="input-row" style="margin-bottom:6px">
+          <div class="input-group">
+            <label class="input-label">Command Name (no prefix)</label>
+            <input class="input" id="cmdBanInput" placeholder="e.g. ddos, tiktok">
+          </div>
+          <button class="btn btn-red" onclick="addCmdBan()">Ban</button>
+        </div>
+        <div id="cmdBanList" style="margin-top:16px">
+          <div style="color:var(--text3);font-size:13px">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS ══ -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-title">⚙️ Bot Settings</div>
+        <div class="card-sub">Core configuration — changes saved immediately</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <h4>🌍 Public Mode</h4>
+            <p>Allow anyone to use the bot (not just owner/sudo)</p>
+          </div>
+          <button class="toggle on" id="togPublic" onclick="toggleSetting('publicMode',this)"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <h4>🤖 AI Chatbot</h4>
+            <p>Respond with AI when mentioned or replied to</p>
+          </div>
+          <button class="toggle" id="togChatbot" onclick="toggleSetting('chatbot',this)"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <h4>👁 Auto-View Status</h4>
+            <p>Automatically view WhatsApp statuses</p>
+          </div>
+          <button class="toggle" id="togStatus" onclick="toggleSetting('autoStatus',this)"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <h4>🗑️ Anti-Delete</h4>
+            <p>Forward deleted messages to owner</p>
+          </div>
+          <button class="toggle" id="togAntidel" onclick="toggleSetting('antidelete',this)"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <h4>🛡️ Anti-Spam</h4>
+            <p>Auto-warn users who spam messages</p>
+          </div>
+          <button class="toggle on" id="togAntispam" onclick="toggleSetting('antispam',this)"></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">✏️ Bot Identity</div>
+        <div class="card-sub">Change bot name, prefix, and owner</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label class="input-label">Bot Name</label>
+            <input class="input" id="setBotName" placeholder="Gabimaru">
+          </div>
+          <div class="input-group" style="max-width:120px">
+            <label class="input-label">Prefix</label>
+            <input class="input" id="setPrefix" placeholder=".">
+          </div>
+          <button class="btn btn-green" onclick="saveIdentity()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CONSOLE ══ -->
+    <div class="page" id="page-console">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div class="card-title">🖥️ Live Console</div>
+            <div class="card-sub">Real-time activity feed and command log</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="clearConsole()">🗑 Clear</button>
+            <button class="btn btn-ghost btn-sm" id="autoScrollBtn" onclick="toggleAutoScroll()">⬇ Auto-scroll ON</button>
+          </div>
+        </div>
+        <div class="console" id="consoleBox">
+          <div class="log-entry"><span class="log-time">--:--:--</span><span class="log-msg success">Admin console initialized. Monitoring bot activity...</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔧 Quick Eval</div>
+        <div class="card-sub">Send a message/command to a JID for testing</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label class="input-label">Target JID</label>
+            <input class="input" id="evalJid" placeholder="me (sends to yourself) or JID">
+          </div>
+          <div class="input-group">
+            <label class="input-label">Message</label>
+            <input class="input" id="evalMsg" placeholder="e.g. .ping">
+          </div>
+          <button class="btn btn-amber" onclick="sendEval()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DANGER ══ -->
+    <div class="page" id="page-danger">
+      <div class="danger-zone">
+        <div class="danger-title">⚠️ DANGER ZONE — IRREVERSIBLE ACTIONS</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,77,109,0.15)">
+            <div>
+              <div style="font-size:14px;font-weight:700">Disconnect All Sessions</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">Removes all paired numbers and clears sessions</div>
+            </div>
+            <button class="btn btn-red" onclick="dangerAction('disconnect-all')">Disconnect All</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,77,109,0.15)">
+            <div>
+              <div style="font-size:14px;font-weight:700">Clear All Warnings</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">Removes all user warnings across all groups</div>
+            </div>
+            <button class="btn btn-amber" onclick="dangerAction('clear-warnings')">Clear Warnings</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,77,109,0.15)">
+            <div>
+              <div style="font-size:14px;font-weight:700">Reset Block List</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">Unblocks all blocked numbers</div>
+            </div>
+            <button class="btn btn-amber" onclick="dangerAction('clear-blocks')">Reset Blocks</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:var(--red)">Factory Reset</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">Clears ALL data: sessions, settings, users, logs</div>
+            </div>
+            <button class="btn btn-red" onclick="dangerAction('factory-reset')">⚠️ Factory Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /adminDash -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Auth ───────────────────────────────────────────────────────────────────
+const ADMIN_KEY = 'spider_admin_auth';
+
+function doLogin() {
+  const pin = document.getElementById('pinInput').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('lockErr');
+  if (!pin) { err.textContent = 'Enter your password'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Authenticating...';
+  err.textContent = '';
+
+  fetch('/admin/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pin })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      sessionStorage.setItem(ADMIN_KEY, d.token);
+      document.getElementById('lockScreen').style.display = 'none';
+      document.getElementById('adminDash').style.display = 'block';
+      initDashboard();
+    } else {
+      document.getElementById('pinInput').classList.add('error');
+      err.textContent = d.message || 'Incorrect password';
+      btn.disabled = false;
+      btn.textContent = 'AUTHENTICATE →';
+      setTimeout(() => document.getElementById('pinInput').classList.remove('error'), 600);
+    }
+  })
+  .catch(() => {
+    err.textContent = 'Network error — try again';
+    btn.disabled = false;
+    btn.textContent = 'AUTHENTICATE →';
+  });
+}
+
+function doLogout() {
+  sessionStorage.removeItem(ADMIN_KEY);
+  document.getElementById('adminDash').style.display = 'none';
+  document.getElementById('lockScreen').style.display = 'flex';
+  document.getElementById('pinInput').value = '';
+}
+
+function toggleEye() {
+  const inp = document.getElementById('pinInput');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function getToken() { return sessionStorage.getItem(ADMIN_KEY) || ''; }
+
+async function adminFetch(url, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', 'x-admin-token': getToken(), ...(opts.headers||{}) };
+  return fetch(url, { ...opts, headers });
+}
+
+// ─── Navigation ─────────────────────────────────────────────────────────────
+const pageMeta = {
+  overview:  { title: 'Overview',      sub: 'Real-time bot metrics and controls' },
+  sessions:  { title: 'Sessions',      sub: 'Manage paired WhatsApp numbers' },
+  broadcast: { title: 'Broadcast',     sub: 'Send messages to groups or contacts' },
+  blocklist: { title: 'Block List',    sub: 'Control who can use the bot' },
+  sudo:      { title: 'Sudo Users',    sub: 'Elevated permission accounts' },
+  cmdbans:   { title: 'Command Bans',  sub: 'Disable specific commands' },
+  settings:  { title: 'Bot Settings',  sub: 'Core configuration' },
+  console:   { title: 'Live Console',  sub: 'Real-time activity and logs' },
+  danger:    { title: 'Danger Zone',   sub: '⚠️ Irreversible actions — proceed with caution' },
+};
+
+function goPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  const meta = pageMeta[id] || {};
+  document.getElementById('pageTitle').innerHTML = meta.title ? `${meta.title} <span>Panel</span>` : id;
+  document.getElementById('pageSub').textContent = meta.sub || '';
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+  loadPageData(id);
+}
+
+function loadPageData(id) {
+  if (id === 'overview') { loadStats(); loadOverviewSessions(); }
+  if (id === 'sessions') { loadSessionList(); }
+  if (id === 'blocklist') { loadBlockList(); }
+  if (id === 'sudo')     { loadSudoList(); }
+  if (id === 'cmdbans')  { loadCmdBans(); }
+  if (id === 'settings') { loadSettings(); }
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('show');
+}
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const t = document.getElementById('toast');
+  const icons = { ok:'✅ ', err:'❌ ', warn:'⚠️ ' };
+  t.textContent = (icons[type]||'') + msg;
+  t.className = `toast show ${type}`;
+  setTimeout(() => t.className = 'toast', 3500);
+}
+
+// ─── Console ─────────────────────────────────────────────────────────────────
+let autoScroll = true;
+function clog(msg, type = 'info') {
+  const box = document.getElementById('consoleBox');
+  const now = new Date().toTimeString().slice(0,8);
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+  box.appendChild(el);
+  while (box.children.length > 100) box.removeChild(box.firstChild);
+  if (autoScroll) box.scrollTop = box.scrollHeight;
+}
+function clearConsole() { document.getElementById('consoleBox').innerHTML = ''; }
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoScrollBtn').textContent = `⬇ Auto-scroll ${autoScroll?'ON':'OFF'}`;
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await adminFetch('/admin/stats');
+    const d = await r.json();
+    if (!d.success) return;
+    document.getElementById('statSessions').textContent = d.sessions;
+    document.getElementById('statUptime').textContent   = formatUptime(d.uptime);
+    document.getElementById('statNumbers').textContent  = d.numbers;
+    document.getElementById('statCmds').textContent     = d.commands;
+  } catch(e) { clog('Could not load stats: ' + e.message, 'error'); }
+}
+
+function formatUptime(s) {
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function runHealth() {
+  const el = document.getElementById('healthDisplay');
+  el.textContent = 'Checking...';
+  try {
+    const r = await adminFetch('/health');
+    const d = await r.json();
+    el.innerHTML = `
+      <span style="color:var(--green)">● Status:</span> OK<br>
+      <span style="color:var(--text3)">● Uptime:</span> ${formatUptime(d.uptime)}<br>
+      <span style="color:var(--text3)">● Sessions:</span> ${d.sessions}<br>
+      <span style="color:var(--text3)">● Memory:</span> ${d.memory ? Math.round(d.memory/1024/1024)+'MB' : 'N/A'}
+    `;
+    toast('Health check passed', 'ok');
+    clog('Health check: OK', 'success');
+  } catch { el.textContent = 'Health check failed'; toast('Check failed', 'err'); }
+}
+
+// ─── Sessions ────────────────────────────────────────────────────────────────
+async function loadOverviewSessions() {
+  try {
+    const r = await adminFetch('/paired');
+    const d = await r.json();
+    const s = await (await adminFetch('/ses-status')).json();
+    const active = (s.sessions||[]).map(x=>x.number);
+    const nums = d.numbers || [];
+    const el = document.getElementById('overviewSessions');
+    if (!nums.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No numbers paired yet.</div>'; return; }
+    el.innerHTML = nums.map(({number:n}) => `
+      <div class="session-card" style="margin-bottom:10px">
+        <div>
+          <div class="session-num">+${n}</div>
+          <div class="session-status">
+            <span class="status-dot ${active.includes(n)?'dot-green':'dot-red'}"></span>
+            ${active.includes(n)?'Connected · Active':'Idle · Not connected'}
+          </div>
+        </div>
+        <span class="badge ${active.includes(n)?'badge-green':'badge-red'}">${active.includes(n)?'LIVE':'IDLE'}</span>
+      </div>`).join('');
+  } catch(e) { clog('Sessions load error: '+e.message,'error'); }
+}
+
+async function loadSessionList() {
+  try {
+    const r = await adminFetch('/paired');
+    const d = await r.json();
+    const s = await (await adminFetch('/ses-status')).json();
+    const active = (s.sessions||[]).map(x=>x.number);
+    const nums = d.numbers || [];
+    const el = document.getElementById('sessionList');
+    if (!nums.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No numbers paired.</div>'; return; }
+    el.innerHTML = nums.map(({number:n}) => `
+      <div class="session-card" style="margin-bottom:10px">
+        <div>
+          <div class="session-num">+${n}</div>
+          <div class="session-status">
+            <span class="status-dot ${active.includes(n)?'dot-green':'dot-red'}"></span>
+            ${active.includes(n)?'Connected':'Disconnected'}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span class="badge ${active.includes(n)?'badge-green':'badge-red'}">${active.includes(n)?'LIVE':'IDLE'}</span>
+          <button class="btn btn-red btn-sm" onclick="removePaired('${n}')">Remove</button>
+        </div>
+      </div>`).join('');
+  } catch {}
+}
+
+async function removePaired(n) {
+  if (!confirm(`Remove +${n} from the bot?`)) return;
+  const r = await adminFetch(`/paired/${n}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.success) { toast(`Removed +${n}`, 'ok'); clog(`Removed session: +${n}`, 'warn'); loadSessionList(); loadOverviewSessions(); }
+  else toast(d.message, 'err');
+}
+
+function goPublic() { window.open('/','_blank'); }
+
+// ─── Block List ───────────────────────────────────────────────────────────────
+let blockListData = [];
+async function loadBlockList() {
+  try {
+    const r = await adminFetch('/admin/blocks');
+    const d = await r.json();
+    blockListData = d.blocked || [];
+    renderBlockList();
+  } catch(e) { document.getElementById('blockList').innerHTML = '<div style="color:var(--text3)">Could not load block list.</div>'; }
+}
+
+function renderBlockList() {
+  const el = document.getElementById('blockList');
+  if (!blockListData.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No blocked numbers.</div>'; return; }
+  el.innerHTML = blockListData.map(n => `
+    <div class="block-item">
+      <div>
+        <div class="block-num">+${n}</div>
+        <div class="block-meta">Blocked from using bot commands</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="removeBlock('${n}')">Unblock</button>
+    </div>`).join('');
+}
+
+function showBlockAdd() {
+  const row = document.getElementById('blockAddRow');
+  row.style.display = row.style.display==='none' ? 'block' : 'none';
+}
+
+async function addBlock() {
+  const n = document.getElementById('blockNumInput').value.trim().replace(/\D/g,'');
+  if (!n) { toast('Enter a number', 'warn'); return; }
+  const r = await adminFetch('/admin/blocks', { method:'POST', body: JSON.stringify({number:n}) });
+  const d = await r.json();
+  if (d.success) { toast(`Blocked +${n}`, 'ok'); clog(`Blocked: +${n}`, 'warn'); document.getElementById('blockNumInput').value=''; loadBlockList(); }
+  else toast(d.message, 'err');
+}
+
+async function removeBlock(n) {
+  const r = await adminFetch(`/admin/blocks/${n}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.success) { toast(`Unblocked +${n}`, 'ok'); clog(`Unblocked: +${n}`, 'info'); loadBlockList(); }
+  else toast(d.message, 'err');
+}
+
+// ─── Sudo ─────────────────────────────────────────────────────────────────────
+async function loadSudoList() {
+  try {
+    const r = await adminFetch('/admin/sudo');
+    const d = await r.json();
+    const sudos = d.sudo || [];
+    const el = document.getElementById('sudoList');
+    if (!sudos.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No sudo users.</div>'; return; }
+    el.innerHTML = sudos.map(n => `
+      <div class="block-item">
+        <div>
+          <div class="block-num">+${n.replace('@s.whatsapp.net','')}</div>
+          <div class="block-meta">Sudo — elevated permissions</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="removeSudo('${n}')">Remove</button>
+      </div>`).join('');
+  } catch {}
+}
+
+async function addSudo() {
+  const n = document.getElementById('sudoInput').value.trim().replace(/\D/g,'');
+  if (!n) { toast('Enter a number','warn'); return; }
+  const r = await adminFetch('/admin/sudo', { method:'POST', body: JSON.stringify({number:n}) });
+  const d = await r.json();
+  if (d.success) { toast(`Added sudo: +${n}`,'ok'); clog(`Sudo added: +${n}`,'success'); document.getElementById('sudoInput').value=''; loadSudoList(); }
+  else toast(d.message,'err');
+}
+
+async function removeSudo(jid) {
+  const r = await adminFetch(`/admin/sudo/${encodeURIComponent(jid)}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.success) { toast('Sudo removed','ok'); loadSudoList(); }
+  else toast(d.message,'err');
+}
+
+// ─── Cmd Bans ────────────────────────────────────────────────────────────────
+async function loadCmdBans() {
+  try {
+    const r = await adminFetch('/admin/cmdbans');
+    const d = await r.json();
+    const bans = d.bans || [];
+    const el = document.getElementById('cmdBanList');
+    if (!bans.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No banned commands.</div>'; return; }
+    el.innerHTML = bans.map(c => `
+      <div class="cmd-ban-row">
+        <div class="cmd-ban-name">.${c}</div>
+        <span class="badge badge-red">BANNED</span>
+        <button class="btn btn-ghost btn-sm" onclick="unbanCmd('${c}')">Unban</button>
+      </div>`).join('');
+  } catch {}
+}
+
+async function addCmdBan() {
+  const c = document.getElementById('cmdBanInput').value.trim().toLowerCase().replace(/^\./,'');
+  if (!c) { toast('Enter command name','warn'); return; }
+  const r = await adminFetch('/admin/cmdbans', { method:'POST', body: JSON.stringify({command:c}) });
+  const d = await r.json();
+  if (d.success) { toast(`Banned: .${c}`,'ok'); clog(`Command banned: .${c}`,'warn'); document.getElementById('cmdBanInput').value=''; loadCmdBans(); }
+  else toast(d.message,'err');
+}
+
+async function unbanCmd(c) {
+  const r = await adminFetch(`/admin/cmdbans/${c}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.success) { toast(`Unbanned: .${c}`,'ok'); loadCmdBans(); }
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const r = await adminFetch('/admin/settings');
+    const d = await r.json();
+    if (!d.settings) return;
+    const s = d.settings;
+    setToggle('togPublic', s.publicMode);
+    setToggle('togChatbot', s.chatbot);
+    setToggle('togStatus', s.autoStatus);
+    setToggle('togAntidel', s.antidelete);
+    setToggle('togAntispam', s.antispam !== false);
+    document.getElementById('setBotName').value = s.botName || 'Gabimaru';
+    document.getElementById('setPrefix').value  = s.prefix  || '.';
+  } catch {}
+}
+
+function setToggle(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (val) el.classList.add('on'); else el.classList.remove('on');
+}
+
+async function toggleSetting(key, btn) {
+  btn.classList.toggle('on');
+  const val = btn.classList.contains('on');
+  const r = await adminFetch('/admin/settings', { method:'PATCH', body: JSON.stringify({key, value:val}) });
+  const d = await r.json();
+  if (d.success) { toast(`${key}: ${val?'ON':'OFF'}`, 'ok'); clog(`Setting changed: ${key} = ${val}`, 'info'); }
+  else { btn.classList.toggle('on'); toast('Failed to save setting','err'); }
+}
+
+async function saveIdentity() {
+  const botName = document.getElementById('setBotName').value.trim();
+  const prefix  = document.getElementById('setPrefix').value.trim();
+  if (!botName || !prefix) { toast('Fill all fields','warn'); return; }
+  const r = await adminFetch('/admin/settings', { method:'PATCH', body: JSON.stringify({key:'identity', value:{botName,prefix}}) });
+  const d = await r.json();
+  if (d.success) { toast('Identity saved','ok'); clog(`Identity updated: ${botName} / prefix: ${prefix}`,'success'); }
+  else toast('Save failed','err');
+}
+
+// ─── Broadcast ───────────────────────────────────────────────────────────────
+async function sendBroadcast() {
+  const msg = document.getElementById('broadcastMsg').value.trim();
+  const target = document.getElementById('broadcastTarget').value;
+  if (!msg) { toast('Enter a message','warn'); return; }
+  if (!confirm(`Send broadcast to ${target}?`)) return;
+  const r = await adminFetch('/admin/broadcast', { method:'POST', body: JSON.stringify({message:msg,target}) });
+  const d = await r.json();
+  if (d.success) { toast('Broadcast sent!','ok'); clog(`Broadcast sent to ${target}: "${msg.slice(0,30)}..."`,'success'); document.getElementById('broadcastMsg').value=''; }
+  else toast(d.message||'Failed','err');
+}
+
+const scheduled = [];
+function scheduleMsg() {
+  const jid  = document.getElementById('schedJid').value.trim();
+  const time = document.getElementById('schedTime').value;
+  const msg  = document.getElementById('schedMsg').value.trim();
+  if (!jid||!time||!msg) { toast('Fill all fields','warn'); return; }
+  const ts = new Date(time).getTime();
+  if (ts <= Date.now()) { toast('Time must be in the future','warn'); return; }
+  scheduled.push({ jid, time, msg, id: Date.now() });
+  renderScheduled();
+  toast('Message scheduled','ok');
+  clog(`Scheduled msg for ${jid} at ${time}`, 'info');
+  setTimeout(async () => {
+    await adminFetch('/admin/send', { method:'POST', body: JSON.stringify({jid,message:msg}) });
+    clog(`Scheduled msg sent to ${jid}`, 'success');
+  }, ts - Date.now());
+}
+
+function renderScheduled() {
+  const el = document.getElementById('schedList');
+  if (!scheduled.length) { el.innerHTML=''; return; }
+  el.innerHTML = `<div class="card-sub" style="margin-bottom:8px">Scheduled (${scheduled.length})</div>` +
+    scheduled.map(s => `
+      <div class="cmd-ban-row">
+        <div style="flex:1;font-size:12px">
+          <div style="font-family:'JetBrains Mono',monospace">${s.jid}</div>
+          <div style="color:var(--text3)">${s.time} · "${s.msg.slice(0,40)}"</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="removeScheduled(${s.id})">Cancel</button>
+      </div>`).join('');
+}
+
+function removeScheduled(id) {
+  const i = scheduled.findIndex(s=>s.id===id);
+  if (i>-1) { scheduled.splice(i,1); renderScheduled(); toast('Cancelled','ok'); }
+}
+
+// ─── Quick Actions ────────────────────────────────────────────────────────────
+async function adminAction(action) {
+  const labels = { restart:'Restart bot?', stop:'Stop the bot?', 'reload-plugins':'Reload all plugins?', 'clear-cache':'Clear API cache?' };
+  if (labels[action] && !confirm(labels[action])) return;
+  try {
+    const r = await adminFetch('/admin/action', { method:'POST', body: JSON.stringify({action}) });
+    const d = await r.json();
+    if (d.success) { toast(d.message||'Done','ok'); clog(`Action: ${action}`, 'warn'); }
+    else toast(d.message||'Failed','err');
+  } catch { toast('Network error','err'); }
+}
+
+// ─── Danger ───────────────────────────────────────────────────────────────────
+async function dangerAction(action) {
+  const warns = {
+    'disconnect-all': 'This will DISCONNECT all sessions. They will need to be re-paired!',
+    'clear-warnings': 'This will clear ALL user warnings across ALL groups.',
+    'clear-blocks': 'This will unblock ALL blocked numbers.',
+    'factory-reset': '⚠️ FACTORY RESET — this deletes ALL data and cannot be undone!'
+  };
+  if (!confirm(warns[action] + '\n\nAre you absolutely sure?')) return;
+  if (action === 'factory-reset' && !confirm('FINAL WARNING: This cannot be undone. Proceed?')) return;
+  const r = await adminFetch('/admin/danger', { method:'POST', body: JSON.stringify({action}) });
+  const d = await r.json();
+  if (d.success) { toast(d.message||'Done','ok'); clog(`DANGER: ${action} executed`,'error'); }
+  else toast(d.message||'Failed','err');
+}
+
+// ─── Quick eval ───────────────────────────────────────────────────────────────
+async function sendEval() {
+  const jid = document.getElementById('evalJid').value.trim();
+  const msg = document.getElementById('evalMsg').value.trim();
+  if (!jid || !msg) { toast('Fill both fields','warn'); return; }
+  const r = await adminFetch('/admin/send', { method:'POST', body: JSON.stringify({jid,message:msg}) });
+  const d = await r.json();
+  if (d.success) { toast('Sent!','ok'); clog(`Test msg sent to ${jid}: ${msg}`, 'cmd'); }
+  else toast(d.message||'Failed','err');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+function initDashboard() {
+  clog('Admin dashboard initialized', 'success');
+  loadStats();
+  loadOverviewSessions();
+  setInterval(loadStats, 15000);
+  setInterval(loadOverviewSessions, 15000);
+  // Poll for live console events
+  setInterval(async () => {
+    try {
+      const r = await adminFetch('/admin/events');
+      const d = await r.json();
+      if (d.events && d.events.length) {
+        d.events.forEach(e => clog(e.msg, e.type || 'info'));
+      }
+    } catch {}
+  }, 3000);
+}
+
+// Auto-login if token exists in session
+if (sessionStorage.getItem(ADMIN_KEY)) {
+  adminFetch('/admin/verify').then(r => r.json()).then(d => {
+    if (d.valid) {
+      document.getElementById('lockScreen').style.display = 'none';
+      document.getElementById('adminDash').style.display = 'block';
+      initDashboard();
+    }
+  }).catch(() => {});
+}
+
+document.getElementById('pinInput').addEventListener('keypress', e => { if (e.key==='Enter') doLogin(); });
+</script>
+</body>
+</html>
