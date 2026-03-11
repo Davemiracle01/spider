@@ -129,9 +129,10 @@ function buildMenu(pushName = "User") {
 
   const readmore = "\u200e".repeat(4001);
 
-  let menu = `╭━━━〔 🕷️ *SPIDER‑VENOM SYMBIOTE* 〕━━━⬣
+  let menu = `
+╭━━━〔 spider 🕸️ web〕━━━⬣
 ┃ 👤 User : *${pushName}*
-┃ 🤖 Bot  : *${settings.botName || "Gabimaru"}*
+┃ 🤖 Bot  : *${settings.botName || "spider🕷️"}*
 ┃ ⚡ Status : *ONLINE*
 ┃ ⏱ Uptime : *${h}:${m}:${s}*
 ┃ 🧠 Commands : *${commands.size}*

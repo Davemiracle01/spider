@@ -1,0 +1,11 @@
+node_modules/
+.env
+richstore/pairing/*/
+sesFolder/
+stick_input/
+stick_output/
+*.log
+monthCheck.json
+keepalive.json
+antilink.json
+temp/

@@ -4,6 +4,11 @@
   "logo": "",
   "keywords": ["whatsapp", "bot", "baileys"],
   "env": {
+    "PORT": {
+      "description": "Port the web server listens on. Default: 2010",
+      "required": false,
+      "value": "2010"
+    },
     "APP_URL": {
       "description": "Your Heroku app URL (e.g. https://your-app.herokuapp.com). Used for keepalive pings.",
       "required": false
