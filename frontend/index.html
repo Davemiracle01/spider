@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>asta tech · Connect</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0f0d;
+      --surface: #111a15;
+      --surface2: #162019;
+      --border: #1e2e22;
+      --green: #25d366;
+      --green-dark: #128c7e;
+      --green-glow: rgba(37,211,102,0.15);
+      --green-glow2: rgba(37,211,102,0.06);
+      --red: #ff4d4d;
+      --red-bg: rgba(255,77,77,0.08);
+      --blue: #4fa3ff;
+      --blue-bg: rgba(79,163,255,0.08);
+      --text: #e8f5ec;
+      --text2: #7a9e84;
+      --text3: #3d5c45;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    @keyframes fadeUp    { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+    @keyframes spin      { to{transform:rotate(360deg)} }
+    @keyframes pulse     { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(0.95)} }
+    @keyframes glow      { 0%,100%{box-shadow:0 0 20px var(--green-glow)} 50%{box-shadow:0 0 40px rgba(37,211,102,0.3)} }
+    @keyframes pop       { 0%{transform:scale(0.96)} 60%{transform:scale(1.02)} 100%{transform:scale(1)} }
+    @keyframes shimmer   {
+      0%   { background-position: -200% center; }
+      100% { background-position:  200% center; }
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Background texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 0%, rgba(37,211,102,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 80% 80%, rgba(18,140,126,0.05) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Subtle grid */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: 0.4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 440px;
+      animation: fadeUp 0.5s ease;
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+    .logo-mark {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 20px var(--green-glow);
+    }
+    .logo-text {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+    .logo-text span {
+      color: var(--green);
+    }
+    .logo-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: 2px;
+      margin-top: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+      opacity: 0.4;
+    }
+
+    .card-title {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .card-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text2);
+      margin-bottom: 28px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Steps */
+    .steps {
+      display: flex;
+      align-items: center;
+      margin-bottom: 28px;
+      gap: 0;
+    }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+    }
+    .step-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--surface2);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text3);
+      transition: all 0.3s;
+    }
+    .step-dot.active {
+      border-color: var(--green);
+      background: rgba(37,211,102,0.1);
+      color: var(--green);
+      box-shadow: 0 0 12px var(--green-glow);
+    }
+    .step-dot.done {
+      border-color: var(--green);
+      background: var(--green);
+      color: #0a0f0d;
+    }
+    .step-lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: 0.5px;
+      text-align: center;
+      text-transform: uppercase;
+      transition: color 0.3s;
+    }
+    .step-lbl.active { color: var(--green); }
+    .step-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 22px;
+      transition: background 0.4s;
+    }
+    .step-line.done { background: var(--green); }
+
+    /* Input */
+    .field-label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .input-wrap {
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .input-prefix {
+      position: absolute;
+      left: 14px; top: 50%;
+      transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      color: var(--text3);
+      pointer-events: none;
+      user-select: none;
+    }
+    .num-input {
+      width: 100%;
+      padding: 14px 14px 14px 34px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 17px;
+      letter-spacing: 2px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .num-input:focus {
+      border-color: var(--green);
+      background: rgba(37,211,102,0.04);
+      box-shadow: 0 0 0 3px var(--green-glow2);
+    }
+    .num-input::placeholder {
+      color: var(--text3);
+      letter-spacing: 1px;
+    }
+    .field-hint {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 6px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Button */
+    .pair-btn {
+      width: 100%;
+      margin-top: 20px;
+      padding: 15px;
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color: #0a0f0d;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .pair-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+      background-size: 200% 100%;
+      animation: shimmer 2.5s linear infinite;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .pair-btn:hover::after { opacity: 1; }
+    .pair-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(37,211,102,0.35);
+    }
+    .pair-btn:active { transform: translateY(0); }
+    .pair-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Result box */
+    .result-box {
+      margin-top: 24px;
+      padding: 24px;
+      text-align: center;
+      background: var(--surface2);
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius-sm);
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+    .result-box.loading {
+      border-color: var(--blue);
+      border-style: solid;
+      background: var(--blue-bg);
+    }
+    .result-box.ready {
+      border-color: var(--green);
+      border-style: solid;
+      background: rgba(37,211,102,0.06);
+      animation: pop 0.4s ease, glow 2s ease-in-out infinite;
+    }
+    .result-box.error {
+      border-color: var(--red);
+      border-style: solid;
+      background: var(--red-bg);
+    }
+
+    .result-placeholder {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text3);
+      letter-spacing: 1px;
+    }
+
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2.5px solid rgba(79,163,255,0.2);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-bottom: 10px;
+    }
+
+    .code-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--text2);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .code-digits {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 42px;
+      font-weight: 600;
+      color: var(--green);
+      letter-spacing: 10px;
+      margin: 4px 0 10px;
+      text-shadow: 0 0 20px var(--green-glow);
+    }
+    .code-instruction {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 0.5px;
+      line-height: 1.7;
+    }
+    .code-instruction b {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .err-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--red);
+      margin-bottom: 5px;
+    }
+    .err-msg {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    .loading-msg {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--blue);
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+    .loading-msg::after {
+      content: '...';
+      animation: blink 1.2s step-end infinite;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 20px;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text3);
+      letter-spacing: 0.5px;
+    }
+    .footer span { color: var(--green); }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="logo">
+    <div class="logo-mark">🤖</div>
+    <div>
+      <div class="logo-text">asta<span>tech</span></div>
+      <div class="logo-tag">WhatsApp Bot</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Connect a Number</div>
+    <div class="card-sub">// pair your whatsapp to activate the bot</div>
+
+    <!-- Steps -->
+    <div class="steps">
+      <div class="step">
+        <div class="step-dot active" id="s1">1</div>
+        <div class="step-lbl active" id="sl1">Enter</div>
+      </div>
+      <div class="step-line" id="sc1"></div>
+      <div class="step">
+        <div class="step-dot" id="s2">2</div>
+        <div class="step-lbl" id="sl2">Request</div>
+      </div>
+      <div class="step-line" id="sc2"></div>
+      <div class="step">
+        <div class="step-dot" id="s3">3</div>
+        <div class="step-lbl" id="sl3">Code</div>
+      </div>
+      <div class="step-line" id="sc3"></div>
+      <div class="step">
+        <div class="step-dot" id="s4">4</div>
+        <div class="step-lbl" id="sl4">Done</div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <label class="field-label" for="numInput">Phone Number</label>
+    <div class="input-wrap">
+      <span class="input-prefix">+</span>
+      <input
+        class="num-input"
+        id="numInput"
+        type="tel"
+        placeholder="254712345678"
+        autocomplete="off"
+      />
+    </div>
+    <div class="field-hint">Include country code — no + or spaces &nbsp;·&nbsp; e.g. 254 for Kenya</div>
+
+    <button class="pair-btn" id="pairBtn" onclick="startPair()">
+      ⚡ Get Pairing Code
+    </button>
+
+    <!-- Result -->
+    <div class="result-box" id="resultBox">
+      <div class="result-placeholder">— waiting for number —</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    powered by <span>asta tech</span> &nbsp;·&nbsp; bot session manager
+  </div>
+
+</div>
+
+<script>
+  let pollT, pollTO;
+
+  function setStep(n) {
+    for (let i = 1; i <= 4; i++) {
+      const dot = document.getElementById('s' + i);
+      const lbl = document.getElementById('sl' + i);
+      dot.className = 'step-dot' + (i < n ? ' done' : i === n ? ' active' : '');
+      lbl.className = 'step-lbl' + (i === n ? ' active' : '');
+      if (i < 4) {
+        document.getElementById('sc' + i).className = 'step-line' + (i < n ? ' done' : '');
+      }
+    }
+  }
+
+  function startPair() {
+    const raw = document.getElementById('numInput').value.replace(/\D/g, '');
+    const box = document.getElementById('resultBox');
+    const btn = document.getElementById('pairBtn');
+
+    if (raw.length < 7) {
+      box.className = 'result-box error';
+      box.innerHTML = `<div class="err-title">❌ Invalid number</div><div class="err-msg">Include country code · e.g. 254712345678</div>`;
+      return;
+    }
+
+    btn.disabled = true;
+    setStep(2);
+    box.className = 'result-box loading';
+    box.innerHTML = `<div class="spinner"></div><div class="loading-msg">Sending request</div>`;
+
+    fetch(`/pair?number=${raw}`)
+      .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t); }); return r; })
+      .then(() => {
+        box.innerHTML = `<div class="spinner"></div><div class="loading-msg">Generating your code</div>`;
+        setStep(3);
+        pollCode(raw);
+      })
+      .catch(err => {
+        box.className = 'result-box error';
+        box.innerHTML = `<div class="err-title">❌ Failed</div><div class="err-msg">${err.message || 'Try again in a moment'}</div>`;
+        btn.disabled = false;
+        setStep(1);
+      });
+  }
+
+  function pollCode(number) {
+    const box = document.getElementById('resultBox');
+    clearInterval(pollT);
+    clearTimeout(pollTO);
+
+    pollT = setInterval(() => {
+      fetch('/pairing-code')
+        .then(r => r.json())
+        .then(data => {
+          if (data.code) {
+            clearInterval(pollT);
+            clearTimeout(pollTO);
+            setStep(4);
+            document.getElementById('pairBtn').disabled = false;
+            box.className = 'result-box ready';
+            box.innerHTML = `
+              <div class="code-label">Your Pairing Code</div>
+              <div class="code-digits">${data.code}</div>
+              <div class="code-instruction">
+                Open WhatsApp &rarr; <b>Linked Devices</b><br>
+                &rarr; Link a Device &rarr; <b>Link with phone number</b>
+              </div>`;
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+
+    pollTO = setTimeout(() => {
+      clearInterval(pollT);
+      const box = document.getElementById('resultBox');
+      if (!box.classList.contains('ready')) {
+        box.className = 'result-box error';
+        box.innerHTML = `<div class="err-title">⏱ Timed out</div><div class="err-msg">Please try again</div>`;
+        document.getElementById('pairBtn').disabled = false;
+        setStep(1);
+      }
+    }, 65000);
+  }
+
+  document.getElementById('numInput').addEventListener('keypress', e => {
+    if (e.key === 'Enter') startPair();
+  });
+</script>
+</body>
+</html>
