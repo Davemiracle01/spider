@@ -381,3 +381,57 @@ app.listen(PORT, "0.0.0.0", async () => {
 
 process.on("uncaughtException",  e => { console.error("[uncaughtException]",  e); pushEvent(`Error: ${e.message}`, "error"); });
 process.on("unhandledRejection", e => { console.error("[unhandledRejection]", e); pushEvent(`Rejection: ${e}`, "error"); });
+
+// ── AI Memory Management (added in v7) ────────────────────────────────────────
+const aiMemoryPath = path.join(__dirname, "richstore", "ai_memory.json");
+
+app.get("/admin/ai-memory", requireAdmin, (req, res) => {
+  try {
+    const mem = fs.existsSync(aiMemoryPath)
+      ? JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"))
+      : {};
+    const summary = Object.entries(mem).map(([chatId, msgs]) => ({
+      chatId,
+      exchanges: Math.floor(msgs.length / 2),
+      lastMsg: msgs[msgs.length - 1]?.content?.slice(0, 60) || ""
+    }));
+    res.json({ success: true, chats: summary.length, memory: summary });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.delete("/admin/ai-memory/:chatId", requireAdmin, (req, res) => {
+  try {
+    const chatId = decodeURIComponent(req.params.chatId);
+    const mem = fs.existsSync(aiMemoryPath)
+      ? JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"))
+      : {};
+    if (chatId === "all") {
+      fs.writeFileSync(aiMemoryPath, "{}");
+      pushEvent("All AI memory cleared", "warn");
+      return res.json({ success: true, message: "All AI memory cleared" });
+    }
+    delete mem[chatId];
+    fs.writeFileSync(aiMemoryPath, JSON.stringify(mem, null, 2));
+    pushEvent(`AI memory cleared for ${chatId}`, "info");
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Plugin list endpoint (added in v7) ────────────────────────────────────────
+app.get("/admin/plugins", requireAdmin, (req, res) => {
+  try {
+    const pluginsDir = path.join(__dirname, "gabi-plugins");
+    const files = fs.readdirSync(pluginsDir).filter(f => f.endsWith(".js"));
+    let g;
+    try { g = require("./gabi"); } catch {}
+    const plugins = files.map(f => {
+      let commands = [];
+      try {
+        const p = require(path.join(pluginsDir, f));
+        commands = Array.isArray(p.command) ? p.command : [p.command].filter(Boolean);
+      } catch {}
+      return { file: f, commands };
+    });
+    res.json({ success: true, total: g?.commands?.size || 0, plugins });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});

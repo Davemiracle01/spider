@@ -20,7 +20,7 @@ const path     = require("path");
 const chalk    = require("chalk");
 
 const { addSession, removeSession, updateSessionStatus } = require("./sessionManager");
-const { handleMessage, handleMessageDelete, cacheMessage } = require("./gabi");
+const { handleMessage, handleMessageDelete, cacheMessage, loadPlugins } = require("./gabi");
 
 const GROUP_INVITE = "IgNwmocViel8O7ZwJyHOlX";
 const CHANNEL_JID  = "120363404343008289@newsletter";

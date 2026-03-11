@@ -1,7 +1,19 @@
 /**
  * gabi.js — Gabimaru WhatsApp Bot Core Handler
- * v4.0 — Heroku-Optimized | Public Mode | Multi-Session
+ * v7.0 — Heroku-Optimized | Public Mode | Multi-Session
  * Owners: 254769279076, 254799073744
+ *
+ * Upgrades over v6:
+ *  - Per-chat AI conversation memory (sliding window, persisted to disk)
+ *  - Per-user AI rate limiting (prevents API abuse / cost runaway)
+ *  - Plugin hot-reload via .reload command (no dyno restart needed)
+ *  - Anti-spam now actually acts (kick/warn/progressive) instead of just logging
+ *  - Anti-link logs offences to admin panel before kicking
+ *  - Admin panel event push on every command error
+ *  - Groq API retry with exponential backoff on 503/429
+ *  - Block-list enforced at message entry point
+ *  - Session number shown in console log per message
+ *  - .clearchat command resets AI memory for a chat
  */
 
 const {
@@ -27,18 +39,27 @@ const apiCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false 
 // ─── Shared Axios Instance ─────────────────────────────────────────────────────
 const axios = require("axios").create({
   timeout: 12000,
-  headers: { "User-Agent": "GabimaruBot/4.0" },
+  headers: { "User-Agent": "GabimaruBot/7.0" },
   httpsAgent: new https.Agent({ keepAlive: true }),
   httpAgent:  new http.Agent({ keepAlive: true }),
 });
 
 // ─── Anti-link DB ──────────────────────────────────────────────────────────────
-const antiLinkPath = path.join(__dirname, "antilink.json");
+const antiLinkPath = path.join(__dirname, "richstore", "antilink.json");
 let antiLinkDB = {};
 try {
   if (fs.existsSync(antiLinkPath))
     antiLinkDB = JSON.parse(fs.readFileSync(antiLinkPath, "utf8"));
 } catch {}
+
+// ─── Block-list (enforced at message entry point) ─────────────────────────────
+const blockListPath = path.join(__dirname, "richstore", "blocklist.json");
+function isBlocked(number) {
+  try {
+    const data = JSON.parse(fs.readFileSync(blockListPath, "utf8"));
+    return (data.blocked || []).includes(number.replace(/[^0-9]/g, ""));
+  } catch { return false; }
+}
 
 // ─── Sticker Folders ──────────────────────────────────────────────────────────
 const inputFolder  = path.join(__dirname, "stick_input");
@@ -46,16 +67,19 @@ const outputFolder = path.join(__dirname, "stick_output");
 if (!fs.existsSync(inputFolder))  fs.mkdirSync(inputFolder,  { recursive: true });
 if (!fs.existsSync(outputFolder)) fs.mkdirSync(outputFolder, { recursive: true });
 
-// ─── Plugin Loader ─────────────────────────────────────────────────────────────
+// ─── Plugin Loader (supports hot-reload) ──────────────────────────────────────
 const commands = new Map();
 
 function loadPlugins() {
   const pluginsDir = path.join(__dirname, "gabi-plugins");
   if (!fs.existsSync(pluginsDir)) return;
   const files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith(".js"));
+  commands.clear();
   for (const file of files) {
     try {
-      const plugin = require(path.join(pluginsDir, file));
+      const fullPath = path.join(pluginsDir, file);
+      delete require.cache[require.resolve(fullPath)]; // bust cache for hot-reload
+      const plugin = require(fullPath);
       if (!plugin.command) continue;
       const aliases = Array.isArray(plugin.command) ? plugin.command : [plugin.command];
       aliases.forEach((alias) => commands.set(alias.toLowerCase(), plugin));
@@ -72,6 +96,66 @@ const groqApiKey = process.env.GROQ_API_KEY;
 let groq;
 if (groqApiKey) groq = new Groq({ apiKey: groqApiKey });
 else console.warn(chalk.yellow("[WARN] GROQ_API_KEY not set. AI chatbot disabled."));
+
+// ─── AI Conversation Memory ────────────────────────────────────────────────────
+// Persisted to disk so memory survives Heroku dyno restarts
+const aiMemoryPath = path.join(__dirname, "richstore", "ai_memory.json");
+let aiMemory = {};
+try {
+  if (fs.existsSync(aiMemoryPath))
+    aiMemory = JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"));
+} catch {}
+
+function saveAiMemory() {
+  fs.writeFile(aiMemoryPath, JSON.stringify(aiMemory, null, 2), () => {});
+}
+function getHistory(chatId)           { return aiMemory[chatId] || []; }
+function clearHistory(chatId)         { delete aiMemory[chatId]; saveAiMemory(); }
+function pushHistory(chatId, role, content) {
+  if (!aiMemory[chatId]) aiMemory[chatId] = [];
+  aiMemory[chatId].push({ role, content });
+  // Keep last 20 messages (10 exchanges) per chat
+  if (aiMemory[chatId].length > 20) aiMemory[chatId] = aiMemory[chatId].slice(-20);
+  saveAiMemory();
+}
+
+// ─── AI Rate Limiter (per sender, prevents cost runaway) ──────────────────────
+const AI_RATE_LIMIT  = 8;   // max requests
+const AI_RATE_WINDOW = 60;  // per N seconds
+const aiRateTracker  = {};
+
+function isAiRateLimited(senderId) {
+  const now  = Date.now();
+  const data = aiRateTracker[senderId];
+  if (!data || (now - data.ts) > AI_RATE_WINDOW * 1000) {
+    aiRateTracker[senderId] = { count: 1, ts: now };
+    return false;
+  }
+  aiRateTracker[senderId].count++;
+  return aiRateTracker[senderId].count > AI_RATE_LIMIT;
+}
+
+// ─── Groq retry wrapper (handles 503 / 429 gracefully) ────────────────────────
+async function groqWithRetry(messages, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const completion = await groq.chat.completions.create({
+        messages,
+        model: "llama3-8b-8192",
+        max_tokens: 200,
+        temperature: 0.8,
+      });
+      return completion.choices[0]?.message?.content || null;
+    } catch (err) {
+      const status = err?.status || err?.response?.status;
+      if ((status === 503 || status === 429) && attempt < retries) {
+        await new Promise(r => setTimeout(r, (attempt + 1) * 1500));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 // ─── Owner/Dev helpers ─────────────────────────────────────────────────────────
 const OWNER_NUMBERS = ["254769279076", "254799073744"];
@@ -93,7 +177,7 @@ function isSudoJid(jid, sock) {
 const MENU_CATEGORIES = {
   "🕷️ SYMBIOTE CORE": {
     desc: "Bot control & settings",
-    cmds: ["alive","ping","menu","help","self","public","addsudo","delsudo","listsudo","chatbot","rvo","chatid","block","ghost","bugreport"],
+    cmds: ["alive","ping","menu","help","self","public","addsudo","delsudo","listsudo","chatbot","rvo","chatid","block","ghost","bugreport","reload","clearchat"],
   },
   "🛡️ GROUP CONTROL": {
     desc: "Group management & protection",
@@ -109,11 +193,11 @@ const MENU_CATEGORIES = {
   },
   "🌐 UTILITIES": {
     desc: "Tools & information lookup",
-    cmds: ["weather","translate","tr","calc","lyrics","animechar","bible","waifu","sticker","telestick","pinterest","play","poll"],
+    cmds: ["weather","translate","tr","calc","lyrics","animechar","bible","waifu","sticker","telestick","pinterest","play","poll","ai","ask"],
   },
   "💀 OWNER ONLY": {
     desc: "Restricted — owner/dev only",
-    cmds: ["ddos","ddos2","hijack","keepalive","nuke","broadcast","setbotname"],
+    cmds: ["ddos","ddos2","hijack","keepalive","nuke","broadcast","setbotname","reload"],
   },
 };
 
@@ -176,7 +260,7 @@ ${entries.join("\n")}
   menu += `
 ╭━━━〔 SYSTEM 〕━━━⬣
 ┃ 🔗 Owner : *${settings.owner}*
-┃ 🧬 Version : *Spider‑Venom v4*
+┃ 🧬 Version : *Spider‑Venom v7*
 ┃ 🕸 Engine : *Baileys Multi‑Device*
 ╰━━━━━━━━━━━━━━⬣
 `;
@@ -230,6 +314,58 @@ async function handleMessageDelete(sock, update) {
   } catch {}
 }
 
+// ─── Anti-Spam Action Handler ──────────────────────────────────────────────────
+async function handleSpamAction(sock, from, sender, senderNumber, spamResult) {
+  const { action, strikes } = spamResult;
+
+  if (action === "progressive") {
+    if (strikes === 1) {
+      await sock.sendMessage(from, {
+        text: `⚠️ @${senderNumber} — slow down! *Strike 1/3*. Keep spamming and you'll be removed.`,
+        mentions: [sender]
+      });
+    } else if (strikes === 2) {
+      await sock.sendMessage(from, {
+        text: `🔇 @${senderNumber} — *Strike 2/3*. Final warning before kick!`,
+        mentions: [sender]
+      });
+    } else {
+      try {
+        await sock.groupParticipantsUpdate(from, [sender], "remove");
+        await sock.sendMessage(from, {
+          text: `🚫 @${senderNumber} was *kicked* for repeated spamming.`,
+          mentions: [sender]
+        });
+        if (global.pushAdminEvent)
+          global.pushAdminEvent(`Anti-spam kicked: ${senderNumber}`, "warn");
+      } catch {
+        await sock.sendMessage(from, {
+          text: `⚠️ @${senderNumber} reached spam limit but kick failed — ensure bot is admin.`,
+          mentions: [sender]
+        });
+      }
+    }
+  } else if (action === "kick") {
+    try {
+      await sock.groupParticipantsUpdate(from, [sender], "remove");
+      await sock.sendMessage(from, {
+        text: `🚫 @${senderNumber} was *kicked* for spamming.`,
+        mentions: [sender]
+      });
+    } catch {
+      await sock.sendMessage(from, {
+        text: `⚠️ Spam from @${senderNumber}. Kick failed — ensure bot is admin.`,
+        mentions: [sender]
+      });
+    }
+  } else {
+    await sock.sendMessage(from, {
+      text: `⚠️ @${senderNumber} is sending too many messages! Please slow down.`,
+      mentions: [sender]
+    });
+  }
+}
+
 // ─── Main Message Handler ──────────────────────────────────────────────────────
 async function handleMessage(sock, m) {
   try {
@@ -243,6 +379,9 @@ async function handleMessage(sock, m) {
       ? (msg.key?.participant || msg.participant || from)
       : from;
     const senderNumber = sender?.split("@")[0] || "unknown";
+
+    // ── Global block-list check ────────────────────────────────────────────────
+    if (isBlocked(senderNumber)) return;
 
     const type = getContentType(msg.message);
     const body = (
@@ -278,15 +417,18 @@ async function handleMessage(sock, m) {
       return;
     }
 
-    // ── Console logging ────────────────────────────────────────────────────────
-    const time  = moment().tz(process.env.TZ || "Africa/Nairobi").format("HH:mm:ss");
-    const tag   = isGroup ? "GROUP" : "PM";
-    const cmdPv = body.startsWith(settings.prefix)
+    // ── Console logging (with session number) ─────────────────────────────────
+    const time    = moment().tz(process.env.TZ || "Africa/Nairobi").format("HH:mm:ss");
+    const tag     = isGroup ? "GROUP" : "PM";
+    const cmdPv   = body.startsWith(settings.prefix)
       ? body.slice(settings.prefix.length).trim().split(/\s+/)[0].toLowerCase()
       : "—";
+    const session = sock.user?.id?.split("@")[0] || "?";
 
     console.log(
-      chalk.yellow(`[${time}]`) + " " + chalk.cyan(`[${tag}]`) + " " +
+      chalk.yellow(`[${time}]`) + " " +
+      chalk.gray(`[${session}]`) + " " +
+      chalk.cyan(`[${tag}]`) + " " +
       chalk.green(msg.pushName || "?") + chalk.gray(" › ") +
       chalk.white(body.slice(0, 60)) +
       chalk.gray(` | cmd:`) + chalk.magentaBright(cmdPv)
@@ -298,12 +440,14 @@ async function handleMessage(sock, m) {
       if (linkRe.test(body)) {
         try {
           await sock.sendMessage(from, {
-            text: `🔗 Link from @${senderNumber} removed.`,
+            text: `🔗 *Anti-Link*: Link from @${senderNumber} detected and removed.`,
             mentions: [sender]
           }, { quoted: msg });
           await sock.groupParticipantsUpdate(from, [sender], "remove");
+          if (global.pushAdminEvent)
+            global.pushAdminEvent(`Anti-link: removed ${senderNumber} from ${from}`, "warn");
         } catch {
-          await sock.sendMessage(from, { text: "⚠️ Failed to remove link — ensure bot is admin." }, { quoted: msg });
+          await sock.sendMessage(from, { text: "⚠️ Anti-link triggered but kick failed — ensure bot is admin." }, { quoted: msg });
         }
         return;
       }
@@ -312,19 +456,16 @@ async function handleMessage(sock, m) {
     // ── Anti-Spam ──────────────────────────────────────────────────────────────
     if (isGroup && !isSudo) {
       try {
-        const antispam = require("./gabi-plugins/antispam");
-        if (antispam.checkSpam(from, sender)) {
-          await sock.sendMessage(from, {
-            text: `⚠️ @${senderNumber} is sending too many messages! Slow down.`,
-            mentions: [sender]
-          }, { quoted: msg });
+        const antispam   = require("./gabi-plugins/antispam");
+        const spamResult = antispam.checkSpam(from, sender);
+        if (spamResult) {
+          await handleSpamAction(sock, from, sender, senderNumber, spamResult);
         }
       } catch {}
     }
 
     // ── Command Dispatch ───────────────────────────────────────────────────────
     if (body.startsWith(settings.prefix)) {
-      // Ban from commands check
       if (isGroup && !isSudo) {
         try {
           const bancmd = require("./gabi-plugins/bancmd");
@@ -337,6 +478,7 @@ async function handleMessage(sock, m) {
       const text        = args.join(" ");
       const readmore    = "\u200e".repeat(4001);
 
+      // ── Built-in: menu ─────────────────────────────────────────
       if (["menu","help","cmd","commands","botmenu"].includes(commandName)) {
         const caption = buildMenu(msg.pushName || "User");
         const images = [
@@ -348,14 +490,31 @@ async function handleMessage(sock, m) {
         return;
       }
 
+      // ── Built-in: reload (sudo/owner only) ─────────────────────
+      if (commandName === "reload") {
+        if (!isSudo) return sock.sendMessage(from, { text: "⛔ Owner only." }, { quoted: msg });
+        loadPlugins();
+        if (global.pushAdminEvent)
+          global.pushAdminEvent(`Plugins reloaded: ${commands.size} commands`, "success");
+        return sock.sendMessage(from, {
+          text: `🔄 *Plugins reloaded!*\n✅ ${commands.size} commands now active.\n_No restart needed._`
+        }, { quoted: msg });
+      }
+
+      // ── Built-in: clearchat (reset AI memory for this chat) ────
+      if (commandName === "clearchat") {
+        clearHistory(from);
+        return sock.sendMessage(from, {
+          text: `🧹 *AI memory cleared* for this chat.\n\n_The symbiote forgets... for now._`
+        }, { quoted: msg });
+      }
+
       const plugin = commands.get(commandName);
       if (!plugin) return;
 
-      // Only enforce group-context check (can't kick in a DM, etc.)
       if (plugin.isGroup && !isGroup)
         return sock.sendMessage(from, { text: "⚠️ This command only works in a group." }, { quoted: msg });
 
-      // Fetch group metadata only when needed
       const groupMetadata = (isGroup && (plugin.isAdmin || plugin.isGroup))
         ? await sock.groupMetadata(from).catch(() => null)
         : null;
@@ -369,6 +528,8 @@ async function handleMessage(sock, m) {
         });
       } catch (err) {
         console.error(chalk.red(`[CMD ERR] ${commandName}:`), err.message);
+        if (global.pushAdminEvent)
+          global.pushAdminEvent(`CMD error: .${commandName} — ${err.message}`, "error");
         await sock.sendMessage(from, {
           text: `⚠️ Error in *${settings.prefix}${commandName}*\n_${err.message}_`
         }, { quoted: msg }).catch(() => {});
@@ -376,7 +537,7 @@ async function handleMessage(sock, m) {
       return;
     }
 
-    // ── AI Chatbot ─────────────────────────────────────────────────────────────
+    // ── AI Chatbot (with memory + rate limiting) ───────────────────────────────
     if (isChatbotDisabled(from)) return;
     if (msg.key.fromMe)          return;
 
@@ -388,6 +549,13 @@ async function handleMessage(sock, m) {
 
     if (!(mentioned || replied || nameCall)) return;
     if (!groq || !body) return;
+
+    // Rate-limit per sender
+    if (isAiRateLimited(sender)) {
+      return sock.sendMessage(from, {
+        text: `🕷️ _Slow down. Even the symbiote needs a breather. Try again in a minute._`
+      }, { quoted: msg }).catch(() => {});
+    }
 
     const reply = (t) =>
       sock.sendMessage(from, {
@@ -409,15 +577,18 @@ async function handleMessage(sock, m) {
 
     const persona = `You are Gabimaru from Hell's Paradise bonded with the Venom symbiote. Strict, efficient, precise. Reply under 30 words. Creator: Gabimaru. Speak to ${msg.pushName}. Challengers get razor-sharp insults. Sometimes say "We are Venom." NEVER BREAK CHARACTER!`;
 
+    // Build messages array with persistent conversation history
+    const history  = getHistory(from);
+    const messages = [
+      { role: "system", content: persona },
+      ...history,
+      { role: "user", content: body },
+    ];
+
     try {
-      const completion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: persona },
-          { role: "user",   content: body },
-        ],
-        model: "llama3-8b-8192",
-      });
-      const aiText = completion.choices[0]?.message?.content || "We have no attachments to life.";
+      const aiText = await groqWithRetry(messages) || "We have no attachments to life.";
+      pushHistory(from, "user",      body);
+      pushHistory(from, "assistant", aiText);
       await reply(aiText);
       await sendRandomSticker(sock, from);
     } catch (aiErr) {
@@ -433,4 +604,4 @@ async function handleMessage(sock, m) {
   }
 }
 
-module.exports = { handleMessage, handleMessageDelete, cacheMessage, commands };
+module.exports = { handleMessage, handleMessageDelete, cacheMessage, commands, loadPlugins, clearHistory };
