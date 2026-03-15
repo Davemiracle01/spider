@@ -1,607 +1,628 @@
-/**
- * gabi.js — Gabimaru WhatsApp Bot Core Handler
- * v7.0 — Heroku-Optimized | Public Mode | Multi-Session
- * Owners: 254769279076, 254799073744
- *
- * Upgrades over v6:
- *  - Per-chat AI conversation memory (sliding window, persisted to disk)
- *  - Per-user AI rate limiting (prevents API abuse / cost runaway)
- *  - Plugin hot-reload via .reload command (no dyno restart needed)
- *  - Anti-spam now actually acts (kick/warn/progressive) instead of just logging
- *  - Anti-link logs offences to admin panel before kicking
- *  - Admin panel event push on every command error
- *  - Groq API retry with exponential backoff on 503/429
- *  - Block-list enforced at message entry point
- *  - Session number shown in console log per message
- *  - .clearchat command resets AI memory for a chat
- */
-
-const {
-  getContentType,
-  jidNormalizedUser,
+const { 
+  default: baileys, proto, jidNormalizedUser, generateWAMessage, 
+  generateWAMessageFromContent, getContentType, prepareWAMessageMedia,
+  downloadContentFromMessage
 } = require("@whiskeysockets/baileys");
-const chalk     = require("chalk");
-const moment    = require("moment-timezone");
-const fs        = require("fs");
-const https     = require("https");
-const http      = require("http");
-const path      = require("path");
-const NodeCache = require("node-cache");
-const Groq      = require("groq-sdk");
 
-const settings              = require("./settings.json");
+const chalk = require("chalk");
+const moment = require("moment-timezone");
+const fs = require("fs");
+const sharp = require("sharp");
+const path = require('path');
+const settings = require('./settings.json');
+const antiLinkPath = path.join(__dirname, 'antilink.json');
+const antiLinkDB = fs.existsSync(antiLinkPath) ? require(antiLinkPath) : {};
+const Groq = require("groq-sdk");
 const { isChatbotDisabled } = require("./chatbot");
-const { checkMonthYear }    = require("./monthCheck");
+const { checkMonthYear } = require('./monthCheck');
+const inputFolder = "./stick_input";
+const outputFolder = "./stick_output";
+const { error01, react01 } = require('./lib/extra');
 
-// ─── Shared API Cache (5-min TTL) ─────────────────────────────────────────────
-const apiCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false });
-
-// ─── Shared Axios Instance ─────────────────────────────────────────────────────
-const axios = require("axios").create({
-  timeout: 12000,
-  headers: { "User-Agent": "GabimaruBot/7.0" },
-  httpsAgent: new https.Agent({ keepAlive: true }),
-  httpAgent:  new http.Agent({ keepAlive: true }),
-});
-
-// ─── Anti-link DB ──────────────────────────────────────────────────────────────
-const antiLinkPath = path.join(__dirname, "richstore", "antilink.json");
-let antiLinkDB = {};
-try {
-  if (fs.existsSync(antiLinkPath))
-    antiLinkDB = JSON.parse(fs.readFileSync(antiLinkPath, "utf8"));
-} catch {}
-
-// ─── Block-list (enforced at message entry point) ─────────────────────────────
-const blockListPath = path.join(__dirname, "richstore", "blocklist.json");
-function isBlocked(number) {
+// Utility functions for JID handling
+function normalizeJid(jid) {
+  if (!jid) return '';
+  // If it's already a full JID, normalize it; if it's a plain number, add suffix
+  if (!jid.includes('@')) {
+    jid = jid.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+  }
   try {
-    const data = JSON.parse(fs.readFileSync(blockListPath, "utf8"));
-    return (data.blocked || []).includes(number.replace(/[^0-9]/g, ""));
-  } catch { return false; }
+    return jidNormalizedUser(jid);
+  } catch (e) {
+    return jid;
+  }
 }
 
-// ─── Sticker Folders ──────────────────────────────────────────────────────────
-const inputFolder  = path.join(__dirname, "stick_input");
-const outputFolder = path.join(__dirname, "stick_output");
-if (!fs.existsSync(inputFolder))  fs.mkdirSync(inputFolder,  { recursive: true });
+function isJidInList(jid, list) {
+  if (!jid || !list || !list.length) return false;
+  const normalizedJid = normalizeJid(jid);
+  const bareNumber = normalizedJid.split('@')[0];
+  return list.some(item => {
+    const normalizedItem = normalizeJid(String(item));
+    const itemNumber = normalizedItem.split('@')[0];
+    return normalizedItem === normalizedJid || itemNumber === bareNumber;
+  });
+}
+
+function extractNumberFromJid(jid) {
+  return normalizeJid(jid).split('@')[0];
+}
+
+// Make sure both sticker folders exist (auto-create if missing)
+if (!fs.existsSync(inputFolder)) fs.mkdirSync(inputFolder, { recursive: true });
 if (!fs.existsSync(outputFolder)) fs.mkdirSync(outputFolder, { recursive: true });
 
-// ─── Plugin Loader (supports hot-reload) ──────────────────────────────────────
-const commands = new Map();
+// Chat history storage
+const chatHistoryPath = path.join(__dirname, 'chat_history.json');
+let chatHistory = fs.existsSync(chatHistoryPath) ? JSON.parse(fs.readFileSync(chatHistoryPath)) : {};
 
-function loadPlugins() {
-  const pluginsDir = path.join(__dirname, "gabi-plugins");
-  if (!fs.existsSync(pluginsDir)) return;
-  const files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith(".js"));
-  commands.clear();
-  for (const file of files) {
+function saveChatHistory() {
+    fs.writeFileSync(chatHistoryPath, JSON.stringify(chatHistory, null, 2));
+}
+
+function getChatHistory(key, maxMessages = 20) {
+    if (!chatHistory[key]) chatHistory[key] = [];
+    return chatHistory[key].slice(-maxMessages);
+}
+
+function addToChatHistory(key, role, content) {
+    if (!chatHistory[key]) chatHistory[key] = [];
+    chatHistory[key].push({ role, content, timestamp: Date.now() });
+    if (chatHistory[key].length > 30) chatHistory[key] = chatHistory[key].slice(-30);
+    saveChatHistory();
+}
+
+// Convert images to webp on startup
+fs.readdirSync(inputFolder).forEach(async (file) => {
+  const ext = path.extname(file).toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") {
+    const inputPath = path.join(inputFolder, file);
+    const outputName = path.basename(file, ext) + ".webp";
+    const outputPath = path.join(outputFolder, outputName);
     try {
-      const fullPath = path.join(pluginsDir, file);
-      delete require.cache[require.resolve(fullPath)]; // bust cache for hot-reload
-      const plugin = require(fullPath);
-      if (!plugin.command) continue;
-      const aliases = Array.isArray(plugin.command) ? plugin.command : [plugin.command];
-      aliases.forEach((alias) => commands.set(alias.toLowerCase(), plugin));
-    } catch (e) {
-      console.error(chalk.red(`[PLUGIN ERROR] ${file}:`), e.message);
+      await sharp(inputPath)
+        .resize(512, 512, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .webp({ quality: 80 })
+        .toFile(outputPath);
+      console.log(`✅ Converted: ${file} → ${outputName}`);
+    } catch (err) {
+      console.error(`❌ Error converting ${file}:`, err.message);
     }
   }
-  console.log(chalk.green(`✅ ${commands.size} commands loaded from ${files.length} plugins.`));
+});
+
+// --- Load Plugins ONCE at startup ---
+const commands = new Map();
+function loadPlugins() {
+    const pluginsDir = path.join(__dirname, 'gabi-plugins');
+    if (!fs.existsSync(pluginsDir)) return;
+    fs.readdirSync(pluginsDir).filter(file => file.endsWith('.js')).forEach(file => {
+        try {
+            delete require.cache[require.resolve(path.join(pluginsDir, file))];
+            const plugin = require(path.join(pluginsDir, file));
+            if (plugin.command) {
+                const aliases = Array.isArray(plugin.command) ? plugin.command : [plugin.command];
+                aliases.forEach(alias => commands.set(alias, plugin));
+            }
+
+        } catch (e) {
+            console.error(chalk.red(`Error loading plugin ${file}:`), e);
+        }
+    });
 }
 loadPlugins();
 
-// ─── Groq AI Client ────────────────────────────────────────────────────────────
-const groqApiKey = process.env.GROQ_API_KEY;
+global.loadPlugins = loadPlugins;
+
+const groqApiKey = process.env.GROQ_API_KEY || "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";
 let groq;
-if (groqApiKey) groq = new Groq({ apiKey: groqApiKey });
-else console.warn(chalk.yellow("[WARN] GROQ_API_KEY not set. AI chatbot disabled."));
-
-// ─── AI Conversation Memory ────────────────────────────────────────────────────
-// Persisted to disk so memory survives Heroku dyno restarts
-const aiMemoryPath = path.join(__dirname, "richstore", "ai_memory.json");
-let aiMemory = {};
-try {
-  if (fs.existsSync(aiMemoryPath))
-    aiMemory = JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"));
-} catch {}
-
-function saveAiMemory() {
-  fs.writeFile(aiMemoryPath, JSON.stringify(aiMemory, null, 2), () => {});
-}
-function getHistory(chatId)           { return aiMemory[chatId] || []; }
-function clearHistory(chatId)         { delete aiMemory[chatId]; saveAiMemory(); }
-function pushHistory(chatId, role, content) {
-  if (!aiMemory[chatId]) aiMemory[chatId] = [];
-  aiMemory[chatId].push({ role, content });
-  // Keep last 20 messages (10 exchanges) per chat
-  if (aiMemory[chatId].length > 20) aiMemory[chatId] = aiMemory[chatId].slice(-20);
-  saveAiMemory();
+if (groqApiKey) {
+    groq = new Groq({ apiKey: groqApiKey });
 }
 
-// ─── AI Rate Limiter (per sender, prevents cost runaway) ──────────────────────
-const AI_RATE_LIMIT  = 8;   // max requests
-const AI_RATE_WINDOW = 60;  // per N seconds
-const aiRateTracker  = {};
+const stickerDir = path.join(__dirname, 'gstickers');
+const gabiStickers = fs.existsSync(stickerDir) ? fs.readdirSync(stickerDir).filter(f => f.endsWith('.webp')) : [];
 
-function isAiRateLimited(senderId) {
-  const now  = Date.now();
-  const data = aiRateTracker[senderId];
-  if (!data || (now - data.ts) > AI_RATE_WINDOW * 1000) {
-    aiRateTracker[senderId] = { count: 1, ts: now };
-    return false;
-  }
-  aiRateTracker[senderId].count++;
-  return aiRateTracker[senderId].count > AI_RATE_LIMIT;
-}
+const settingsPath = path.join(__dirname, 'settings.json');
+fs.watchFile(settingsPath, () => {
+    console.log(chalk.yellow('🔄 Settings updated, reloading...'));
+    delete require.cache[require.resolve(settingsPath)];
+    const newSettings = require(settingsPath);
+    Object.assign(settings, newSettings);
+});
 
-// ─── Groq retry wrapper (handles 503 / 429 gracefully) ────────────────────────
-async function groqWithRetry(messages, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const completion = await groq.chat.completions.create({
-        messages,
-        model: "llama3-8b-8192",
-        max_tokens: 200,
-        temperature: 0.8,
-      });
-      return completion.choices[0]?.message?.content || null;
-    } catch (err) {
-      const status = err?.status || err?.response?.status;
-      if ((status === 503 || status === 429) && attempt < retries) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 1500));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-// ─── Owner/Dev helpers ─────────────────────────────────────────────────────────
-const OWNER_NUMBERS = ["254769279076", "254799073744"];
-
-function isOwnerNumber(num) {
-  const clean = num.replace(/[^0-9]/g, "");
-  return OWNER_NUMBERS.includes(clean) || clean === settings.owner;
-}
-
-function isSudoJid(jid, sock) {
-  const num = jid.split("@")[0];
-  if (isOwnerNumber(num)) return true;
-  if (sock && jidNormalizedUser(sock.user?.id) === jidNormalizedUser(jid)) return true;
-  const sudoList = settings.sudo || [];
-  return sudoList.some(s => jidNormalizedUser(s) === jidNormalizedUser(jid));
-}
-
-// ─── Spider-Venom Symbiote Menu ────────────────────────────────────────────────
-const MENU_CATEGORIES = {
-  "🕷️ SYMBIOTE CORE": {
-    desc: "Bot control & settings",
-    cmds: ["alive","ping","menu","help","self","public","addsudo","delsudo","listsudo","chatbot","rvo","chatid","block","ghost","bugreport","reload","clearchat"],
-  },
-  "🛡️ GROUP CONTROL": {
-    desc: "Group management & protection",
-    cmds: ["kick","kickall","promote","demote","warn","warnings","clearwarn","mute","unmute","tagall","hidetag","groupinfo","gclink","welcome","bye","setdesc","setname","antilink","lock","unlock","bancmd","unbancmd","antidelete","antispam"],
-  },
-  "👁️ STATUS & STEALTH": {
-    desc: "Status viewing & privacy tools",
-    cmds: ["viewstatus","vs","antimentionstatus","ams","ghost"],
-  },
-  "🎮 FUN & GAMES": {
-    desc: "Entertainment & interactions",
-    cmds: ["quote","joke","fact","8ball","flip","roast","ship","tod","truth","dare","wasted"],
-  },
-  "🌐 UTILITIES": {
-    desc: "Tools & information lookup",
-    cmds: ["weather","translate","tr","calc","lyrics","animechar","bible","waifu","sticker","telestick","pinterest","play","poll","ai","ask"],
-  },
-  "💀 OWNER ONLY": {
-    desc: "Restricted — owner/dev only",
-    cmds: ["ddos","ddos2","hijack","keepalive","nuke","broadcast","setbotname","reload"],
-  },
+// Anti-delete message store
+const messageStore = new Map();
+const antiDeleteSettings = {
+    enabled: true,
+    notify: true,
+    storeDuration: 5 * 60 * 1000,
+    maxStoredMessages: 1000
 };
 
-function buildMenu(pushName = "User") {
-  const up = process.uptime();
-  const h = String(Math.floor(up / 3600)).padStart(2, "0");
-  const m = String(Math.floor((up % 3600) / 60)).padStart(2, "0");
-  const s = String(Math.floor(up % 60)).padStart(2, "0");
-
-  const timeStr = moment()
-    .tz(process.env.TZ || "Africa/Nairobi")
-    .format("HH:mm:ss | ddd, MMM D");
-
-  const readmore = "\u200e".repeat(4001);
-
-  let menu = `
-╭━━━〔 spider 🕸️ web〕━━━⬣
-┃ 👤 User : *${pushName}*
-┃ 🤖 Bot  : *${settings.botName || "spider🕷️"}*
-┃ ⚡ Status : *ONLINE*
-┃ ⏱ Uptime : *${h}:${m}:${s}*
-┃ 🧠 Commands : *${commands.size}*
-┃ 🌐 Prefix : *${settings.prefix}*
-┃ 🕒 Time : *${timeStr}*
-╰━━━━━━━━━━━━━━━━━━━━⬣
-
-_"We are Venom. We protect the host."_
-${readmore}
-`;
-
-  for (const [cat, { desc, cmds }] of Object.entries(MENU_CATEGORIES)) {
-    const seen = new Set();
-    const entries = [];
-
-    for (const alias of cmds) {
-      const plugin = commands.get(alias);
-      if (!plugin) continue;
-
-      const primary = Array.isArray(plugin.command)
-        ? plugin.command[0]
-        : plugin.command;
-
-      if (seen.has(primary)) continue;
-      seen.add(primary);
-
-      entries.push(`│ ▸ *${settings.prefix}${primary}*`);
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, storedMsg] of messageStore.entries()) {
+        if (now - storedMsg.timestamp > antiDeleteSettings.storeDuration) {
+            messageStore.delete(key);
+        }
     }
+}, 60 * 1000);
 
-    if (!entries.length) continue;
-
-    menu += `
-╭─❍ *${cat}*
-│ ${desc}
-│
-${entries.join("\n")}
-╰───────────────⬣
-`;
-  }
-
-  menu += `
-╭━━━〔 SYSTEM 〕━━━⬣
-┃ 🔗 Owner : *${settings.owner}*
-┃ 🧬 Version : *Spider‑Venom v7*
-┃ 🕸 Engine : *Baileys Multi‑Device*
-╰━━━━━━━━━━━━━━⬣
-`;
-
-  return menu;
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-function fakeQuote(from) {
-  return {
-    key: { fromMe: false, participant: "0@s.whatsapp.net", remoteJid: from },
-    message: { conversation: "🕷️ Spider-Venom Symbiote" },
-  };
-}
-
-async function sendRandomSticker(sock, from) {
-  try {
-    const stickers = fs.readdirSync(outputFolder).filter((f) => f.endsWith(".webp"));
-    if (!stickers.length) return;
-    const pick = stickers[Math.floor(Math.random() * stickers.length)];
-    await sock.sendMessage(from, { sticker: fs.readFileSync(path.join(outputFolder, pick)) });
-  } catch {}
-}
-
-// ─── Message Cache (for anti-delete) ──────────────────────────────────────────
-const messageCache = new NodeCache({ stdTTL: 600, checkperiod: 120, useClones: false });
-
-function cacheMessage(msgId, body) {
-  if (msgId && body) messageCache.set(msgId, { body });
-}
-
-// ─── Anti-Delete Event Handler ─────────────────────────────────────────────────
-async function handleMessageDelete(sock, update) {
-  try {
-    const { loadDB } = require("./gabi-plugins/antidelete");
-    const db   = loadDB();
-    const keys = update?.keys || update?.deleted || [];
-
-    for (const key of keys) {
-      const groupJid = key.remoteJid;
-      if (!groupJid || !db[groupJid]) continue;
-      const cachedMsg = messageCache.get(key.id);
-      if (!cachedMsg) continue;
-      const deleter = key.participant || key.remoteJid;
-      const num     = deleter.split("@")[0];
-      await sock.sendMessage(groupJid, {
-        text: `🗑️ *Anti-Delete Triggered*\n\n👤 @${num} deleted a message:\n\n_"${cachedMsg.body}"_`,
-        mentions: [deleter]
-      });
+function storeMessage(msg) {
+    if (!antiDeleteSettings.enabled) return;
+    const key = `${msg.key.remoteJid}_${msg.key.id}`;
+    const timestamp = Date.now();
+    if (messageStore.size >= antiDeleteSettings.maxStoredMessages) {
+        const entries = Array.from(messageStore.entries());
+        const oldestKey = entries.reduce((oldest, [k, v]) =>
+            v.timestamp < messageStore.get(oldest).timestamp ? k : oldest,
+            entries[0][0]
+        );
+        messageStore.delete(oldestKey);
     }
-  } catch {}
-}
-
-// ─── Anti-Spam Action Handler ──────────────────────────────────────────────────
-async function handleSpamAction(sock, from, sender, senderNumber, spamResult) {
-  const { action, strikes } = spamResult;
-
-  if (action === "progressive") {
-    if (strikes === 1) {
-      await sock.sendMessage(from, {
-        text: `⚠️ @${senderNumber} — slow down! *Strike 1/3*. Keep spamming and you'll be removed.`,
-        mentions: [sender]
-      });
-    } else if (strikes === 2) {
-      await sock.sendMessage(from, {
-        text: `🔇 @${senderNumber} — *Strike 2/3*. Final warning before kick!`,
-        mentions: [sender]
-      });
-    } else {
-      try {
-        await sock.groupParticipantsUpdate(from, [sender], "remove");
-        await sock.sendMessage(from, {
-          text: `🚫 @${senderNumber} was *kicked* for repeated spamming.`,
-          mentions: [sender]
-        });
-        if (global.pushAdminEvent)
-          global.pushAdminEvent(`Anti-spam kicked: ${senderNumber}`, "warn");
-      } catch {
-        await sock.sendMessage(from, {
-          text: `⚠️ @${senderNumber} reached spam limit but kick failed — ensure bot is admin.`,
-          mentions: [sender]
-        });
-      }
-    }
-  } else if (action === "kick") {
-    try {
-      await sock.groupParticipantsUpdate(from, [sender], "remove");
-      await sock.sendMessage(from, {
-        text: `🚫 @${senderNumber} was *kicked* for spamming.`,
-        mentions: [sender]
-      });
-    } catch {
-      await sock.sendMessage(from, {
-        text: `⚠️ Spam from @${senderNumber}. Kick failed — ensure bot is admin.`,
-        mentions: [sender]
-      });
-    }
-  } else {
-    await sock.sendMessage(from, {
-      text: `⚠️ @${senderNumber} is sending too many messages! Please slow down.`,
-      mentions: [sender]
+    messageStore.set(key, {
+        message: JSON.parse(JSON.stringify(msg)),
+        timestamp,
+        sender: msg.key.participant || msg.key.remoteJid,
+        senderName: msg.pushName || "Unknown"
     });
-  }
 }
 
-// ─── Main Message Handler ──────────────────────────────────────────────────────
+async function handleProtocolMessage(sock, msg) {
+    if (msg.message.protocolMessage?.type === 5) {
+        const deleteKey = msg.message.protocolMessage.key;
+        if (!deleteKey?.remoteJid) return;
+        const storeKey = `${deleteKey.remoteJid}_${deleteKey.id}`;
+        const originalMessage = messageStore.get(storeKey);
+        if (!originalMessage) return;
+
+        const from = deleteKey.remoteJid;
+        const deletedBy = msg.key.participant || msg.key.remoteJid;
+        const originalType = getContentType(originalMessage.message.message);
+        let deletedContent = '';
+
+        switch (originalType) {
+            case 'conversation':
+                deletedContent = originalMessage.message.message.conversation || '';
+                break;
+            case 'extendedTextMessage':
+                deletedContent = originalMessage.message.message.extendedTextMessage?.text || '';
+                break;
+            case 'imageMessage':
+                deletedContent = '[IMAGE] ' + (originalMessage.message.message.imageMessage?.caption || 'No caption');
+                break;
+            case 'videoMessage':
+                deletedContent = '[VIDEO] ' + (originalMessage.message.message.videoMessage?.caption || 'No caption');
+                break;
+            case 'audioMessage':
+                deletedContent = originalMessage.message.message.audioMessage?.ptt ? '[VOICE_MESSAGE]' : '[AUDIO]';
+                break;
+            case 'documentMessage':
+                deletedContent = '[DOCUMENT] ' + (originalMessage.message.message.documentMessage?.fileName || 'Unknown file');
+                break;
+            default:
+                deletedContent = `[${(originalType || 'UNKNOWN').toUpperCase()}]`;
+        }
+
+        const deleterName = deletedBy.split('@')[0];
+        const senderName = originalMessage.senderName;
+
+        let responseText = `🚫 *Message Deleted Detection*\n\n`;
+        responseText += `• *Deleted by:* @${deleterName}\n`;
+        responseText += `• *Original sender:* ${senderName}\n`;
+        responseText += `• *Content:* ${deletedContent}\n`;
+        responseText += `• *Time:* ${new Date().toLocaleTimeString()}`;
+
+        try {
+            await sock.sendMessage(from, { text: responseText, mentions: [deletedBy] });
+
+            if (originalType === 'imageMessage' && originalMessage.message.message.imageMessage) {
+                try {
+                    const stream = await downloadContentFromMessage(originalMessage.message.message.imageMessage, 'image');
+                    let buffer = Buffer.from([]);
+                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    await sock.sendMessage(from, { image: buffer, caption: `📸 Deleted image from ${senderName}` });
+                } catch (mediaError) {
+                    console.log('Could not recover media:', mediaError.message);
+                }
+            } else if (originalType === 'videoMessage' && originalMessage.message.message.videoMessage) {
+                try {
+                    const stream = await downloadContentFromMessage(originalMessage.message.message.videoMessage, 'video');
+                    let buffer = Buffer.from([]);
+                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    await sock.sendMessage(from, { video: buffer, caption: `🎥 Deleted video from ${senderName}` });
+                } catch (mediaError) {
+                    console.log('Could not recover media:', mediaError.message);
+                }
+            }
+        } catch (error) {
+            console.error('Error sending delete notification:', error);
+        }
+
+        messageStore.delete(storeKey);
+    }
+}
+
+// Track which plugins have been onLoad'd
+const onLoadedPlugins = new Set();
+
 async function handleMessage(sock, m) {
-  try {
-    const msg = m.messages[0];
-    if (!msg?.message) return;
-
-    const from     = msg.key.remoteJid;
-    const isGroup  = from.endsWith("@g.us");
-    const isStatus = from === "status@broadcast";
-    const sender   = isGroup
-      ? (msg.key?.participant || msg.participant || from)
-      : from;
-    const senderNumber = sender?.split("@")[0] || "unknown";
-
-    // ── Global block-list check ────────────────────────────────────────────────
-    if (isBlocked(senderNumber)) return;
-
-    const type = getContentType(msg.message);
-    const body = (
-      type === "conversation"        ? msg.message.conversation :
-      type === "extendedTextMessage" ? msg.message.extendedTextMessage.text :
-      ""
-    ).trim();
-
-    const botJid  = jidNormalizedUser(sock.user.id);
-    const isOwner = isOwnerNumber(senderNumber);
-    const isSudo  = isSudoJid(sender, sock);
-
-    // Cache message for anti-delete
-    if (isGroup && msg.key?.id && body) {
-      cacheMessage(msg.key.id, body);
-    }
-
-    // ── Status: Auto-View & Anti-Mention-Status ───────────────────────────────
-    if (isStatus) {
-      try { await sock.readMessages([msg.key]); } catch {}
-
-      try {
-        const { loadDB: loadAMS } = require("./gabi-plugins/antimentionstatus");
-        const amsDB       = loadAMS();
-        const ctxMentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-        if (amsDB["global"] && ctxMentions.includes(botJid)) {
-          const senderJid = msg.key.participant || sender;
-          await sock.sendMessage(senderJid, {
-            text: `👁️ *The symbiote saw your status.*\n\n_We are watching from the shadows. 🕷️_`
-          });
+    // Trigger onLoad for any plugin that hasn't been started yet
+    for (const [, plugin] of commands) {
+        const key = plugin.command?.[0] || plugin.command;
+        if (typeof plugin.onLoad === 'function' && !onLoadedPlugins.has(key)) {
+            onLoadedPlugins.add(key);
+            try { plugin.onLoad(sock); } catch(e) { console.error('onLoad error:', e.message); }
         }
-      } catch {}
-      return;
     }
-
-    // ── Console logging (with session number) ─────────────────────────────────
-    const time    = moment().tz(process.env.TZ || "Africa/Nairobi").format("HH:mm:ss");
-    const tag     = isGroup ? "GROUP" : "PM";
-    const cmdPv   = body.startsWith(settings.prefix)
-      ? body.slice(settings.prefix.length).trim().split(/\s+/)[0].toLowerCase()
-      : "—";
-    const session = sock.user?.id?.split("@")[0] || "?";
-
-    console.log(
-      chalk.yellow(`[${time}]`) + " " +
-      chalk.gray(`[${session}]`) + " " +
-      chalk.cyan(`[${tag}]`) + " " +
-      chalk.green(msg.pushName || "?") + chalk.gray(" › ") +
-      chalk.white(body.slice(0, 60)) +
-      chalk.gray(` | cmd:`) + chalk.magentaBright(cmdPv)
-    );
-
-    // ── Anti-link ──────────────────────────────────────────────────────────────
-    if (isGroup && antiLinkDB[from] && !isSudo) {
-      const linkRe = /(https?:\/\/)?(chat\.whatsapp\.com|t\.me|discord\.gg|discord\.com\/invite)\/[^\s]+/i;
-      if (linkRe.test(body)) {
-        try {
-          await sock.sendMessage(from, {
-            text: `🔗 *Anti-Link*: Link from @${senderNumber} detected and removed.`,
-            mentions: [sender]
-          }, { quoted: msg });
-          await sock.groupParticipantsUpdate(from, [sender], "remove");
-          if (global.pushAdminEvent)
-            global.pushAdminEvent(`Anti-link: removed ${senderNumber} from ${from}`, "warn");
-        } catch {
-          await sock.sendMessage(from, { text: "⚠️ Anti-link triggered but kick failed — ensure bot is admin." }, { quoted: msg });
-        }
-        return;
-      }
-    }
-
-    // ── Anti-Spam ──────────────────────────────────────────────────────────────
-    if (isGroup && !isSudo) {
-      try {
-        const antispam   = require("./gabi-plugins/antispam");
-        const spamResult = antispam.checkSpam(from, sender);
-        if (spamResult) {
-          await handleSpamAction(sock, from, sender, senderNumber, spamResult);
-        }
-      } catch {}
-    }
-
-    // ── Command Dispatch ───────────────────────────────────────────────────────
-    if (body.startsWith(settings.prefix)) {
-      if (isGroup && !isSudo) {
-        try {
-          const bancmd = require("./gabi-plugins/bancmd");
-          if (bancmd.isBanned(from, sender)) return;
-        } catch {}
-      }
-
-      const args        = body.slice(settings.prefix.length).trim().split(/ +/);
-      const commandName = args.shift()?.toLowerCase();
-      const text        = args.join(" ");
-      const readmore    = "\u200e".repeat(4001);
-
-      // ── Built-in: menu ─────────────────────────────────────────
-      if (["menu","help","cmd","commands","botmenu"].includes(commandName)) {
-        const caption = buildMenu(msg.pushName || "User");
-        const images = [
-          "https://files.catbox.moe/wz99v6.jpeg",
-          "https://files.catbox.moe/h56ygm.jpeg"
-        ];
-        const randomImage = images[Math.floor(Math.random() * images.length)];
-        await sock.sendMessage(from, { image: { url: randomImage }, caption }, { quoted: msg });
-        return;
-      }
-
-      // ── Built-in: reload (sudo/owner only) ─────────────────────
-      if (commandName === "reload") {
-        if (!isSudo) return sock.sendMessage(from, { text: "⛔ Owner only." }, { quoted: msg });
-        loadPlugins();
-        if (global.pushAdminEvent)
-          global.pushAdminEvent(`Plugins reloaded: ${commands.size} commands`, "success");
-        return sock.sendMessage(from, {
-          text: `🔄 *Plugins reloaded!*\n✅ ${commands.size} commands now active.\n_No restart needed._`
-        }, { quoted: msg });
-      }
-
-      // ── Built-in: clearchat (reset AI memory for this chat) ────
-      if (commandName === "clearchat") {
-        clearHistory(from);
-        return sock.sendMessage(from, {
-          text: `🧹 *AI memory cleared* for this chat.\n\n_The symbiote forgets... for now._`
-        }, { quoted: msg });
-      }
-
-      const plugin = commands.get(commandName);
-      if (!plugin) return;
-
-      if (plugin.isGroup && !isGroup)
-        return sock.sendMessage(from, { text: "⚠️ This command only works in a group." }, { quoted: msg });
-
-      const groupMetadata = (isGroup && (plugin.isAdmin || plugin.isGroup))
-        ? await sock.groupMetadata(from).catch(() => null)
-        : null;
-      const isAdmin = isGroup
-        && groupMetadata?.participants?.find((p) => jidNormalizedUser(p.id) === jidNormalizedUser(sender))?.admin;
-
-      try {
-        await plugin.run({
-          sock, msg, from, sender, senderNumber, commandName, args, text,
-          isOwner, readmore, isSudo, isAdmin, settings, axios, apiCache, isGroup, groupMetadata
-        });
-      } catch (err) {
-        console.error(chalk.red(`[CMD ERR] ${commandName}:`), err.message);
-        if (global.pushAdminEvent)
-          global.pushAdminEvent(`CMD error: .${commandName} — ${err.message}`, "error");
-        await sock.sendMessage(from, {
-          text: `⚠️ Error in *${settings.prefix}${commandName}*\n_${err.message}_`
-        }, { quoted: msg }).catch(() => {});
-      }
-      return;
-    }
-
-    // ── AI Chatbot (with memory + rate limiting) ───────────────────────────────
-    if (isChatbotDisabled(from)) return;
-    if (msg.key.fromMe)          return;
-
-    const botName   = (settings.packname || "Gabimaru").toLowerCase();
-    const ctxInfo   = msg.message.extendedTextMessage?.contextInfo;
-    const mentioned = ctxInfo?.mentionedJid?.includes(botJid);
-    const replied   = ctxInfo?.participant === botJid;
-    const nameCall  = body.toLowerCase().startsWith(botName) && body.length > botName.length;
-
-    if (!(mentioned || replied || nameCall)) return;
-    if (!groq || !body) return;
-
-    // Rate-limit per sender
-    if (isAiRateLimited(sender)) {
-      return sock.sendMessage(from, {
-        text: `🕷️ _Slow down. Even the symbiote needs a breather. Try again in a minute._`
-      }, { quoted: msg }).catch(() => {});
-    }
-
-    const reply = (t) =>
-      sock.sendMessage(from, {
-        contextInfo: {
-          mentionedJid: [from],
-          externalAdReply: {
-            showAdAttribution:     false,
-            renderLargerThumbnail: false,
-            title:                 "Spider-Venom Symbiote",
-            body:                  "We Are Venom",
-            previewType:           "VIDEO",
-            thumbnailUrl:          "https://c.top4top.io/p_3493r01s90.jpg",
-            sourceUrl:             "https://t.me/Gabimarutechchannel",
-            mediaUrl:              "https://t.me/Gabimarutechchannel",
-          },
-        },
-        text: t,
-      }, { quoted: fakeQuote(from) });
-
-    const persona = `You are Gabimaru from Hell's Paradise bonded with the Venom symbiote. Strict, efficient, precise. Reply under 30 words. Creator: Gabimaru. Speak to ${msg.pushName}. Challengers get razor-sharp insults. Sometimes say "We are Venom." NEVER BREAK CHARACTER!`;
-
-    // Build messages array with persistent conversation history
-    const history  = getHistory(from);
-    const messages = [
-      { role: "system", content: persona },
-      ...history,
-      { role: "user", content: body },
-    ];
-
     try {
-      const aiText = await groqWithRetry(messages) || "We have no attachments to life.";
-      pushHistory(from, "user",      body);
-      pushHistory(from, "assistant", aiText);
-      await reply(aiText);
-      await sendRandomSticker(sock, from);
-    } catch (aiErr) {
-      console.error(chalk.red("[AI ERR]:"), aiErr.message);
-    }
+        const msg = m.messages[0];
+        if (!msg?.message) return;
 
-    if (checkMonthYear()) {
-      await sock.sendMessage(sock.user.id, { text: "🎉 Happy New Month from Spider-Venom!!" });
-    }
+        const from = msg.key.remoteJid;
+        const isGroup = from.endsWith('@g.us');
+        const isStatus = from === 'status@broadcast';
+        const isNewsletter = from.endsWith('@newsletter');
+        const sender = isGroup
+            ? (msg.key?.participant || msg.participant || from)
+            : from;
 
-  } catch (error) {
-    console.error(chalk.red("[handleMessage ERR]:"), error.message);
-  }
+        if (from.endsWith("@status")) {
+            await sock.readMessages([msg.key]);
+        }
+
+        const normalizedSender = normalizeJid(sender);
+        const senderNumber = extractNumberFromJid(sender);
+
+        const botJid = normalizeJid(sock.user.id);
+        const botNumber = botJid.split('@')[0];
+        const ownerList = Array.isArray(settings.owner) ? settings.owner : [settings.owner];
+        const sudoList = settings.sudo || [];
+
+        // The connected bot number is ALWAYS treated as owner — no restrictions
+        const isBotSelf = msg.key.fromMe || normalizeJid(sender) === botJid || extractNumberFromJid(sender) === botNumber;
+        const isOwner = isBotSelf || isJidInList(sender, ownerList);
+        const isSudo = isOwner || isJidInList(sender, sudoList);
+        const senderName = msg.pushName || "Unknown";
+
+        // Store message for anti-delete
+        if (antiDeleteSettings.enabled && !msg.key.fromMe) {
+            storeMessage(msg);
+        }
+
+        // Handle protocol messages (deletes) first
+        if (msg.message.protocolMessage) {
+            await handleProtocolMessage(sock, msg);
+            return;
+        }
+
+        const type = getContentType(msg.message);
+        let body = '';
+        let messageType = type;
+
+        switch (type) {
+            case 'conversation':
+                body = msg.message.conversation || '';
+                break;
+            case 'extendedTextMessage':
+                body = msg.message.extendedTextMessage?.text || '';
+                break;
+            case 'imageMessage':
+                body = '[IMAGE]' + (msg.message.imageMessage?.caption || '');
+                messageType = 'image';
+                break;
+            case 'videoMessage':
+                body = '[VIDEO]' + (msg.message.videoMessage?.caption || '');
+                messageType = 'video';
+                break;
+            case 'audioMessage':
+                body = msg.message.audioMessage?.ptt ? '[VOICE_MESSAGE]' : '[AUDIO]';
+                messageType = msg.message.audioMessage?.ptt ? 'voice' : 'audio';
+                break;
+            case 'documentMessage':
+                body = '[DOCUMENT] ' + (msg.message.documentMessage?.fileName || '');
+                messageType = 'document';
+                break;
+            case 'stickerMessage':
+                body = '[STICKER]';
+                messageType = 'sticker';
+                break;
+            case 'contactMessage':
+                body = '[CONTACT]';
+                messageType = 'contact';
+                break;
+            case 'locationMessage':
+                body = '[LOCATION]';
+                messageType = 'location';
+                break;
+            case 'reactionMessage':
+                body = `[REACTION] ${msg.message.reactionMessage?.text || ''}`;
+                messageType = 'reaction';
+                break;
+            case 'pollCreationMessage':
+                body = '[POLL]';
+                messageType = 'poll';
+                break;
+            case 'viewOnceMessageV2': {
+                const voType = Object.keys(msg.message.viewOnceMessageV2.message)[0];
+                body = `[VIEW_ONCE_${voType.toUpperCase()}]`;
+                messageType = `viewOnce_${voType}`;
+                const sendalar = msg.key.fromMe ? "YOU" : msg.pushName || msg.key.participant || msg.key.remoteJid;
+                console.log(`📸 View-once ${voType} received from ${sendalar}`);
+                break;
+            }
+            case 'protocolMessage':
+                body = '[PROTOCOL_MESSAGE]';
+                messageType = 'protocol';
+                break;
+            case 'newsletterAdminInviteMessage':
+                body = '[NEWSLETTER_INVITE]';
+                messageType = 'newsletter_invite';
+                break;
+            // List row tap (Style 3) — rowId becomes the body so the command handler picks it up
+            case 'listResponseMessage': {
+                const selectedId = msg.message.listResponseMessage?.singleSelectReply?.selectedRowId || '';
+                body = selectedId;
+                messageType = 'listResponse';
+                console.log(chalk.cyan(`   ↳ List row tapped: "${selectedId}"`));
+                break;
+            }
+            // Button quick-reply tap
+            case 'buttonsResponseMessage': {
+                const btnId = msg.message.buttonsResponseMessage?.selectedButtonId || '';
+                body = btnId;
+                messageType = 'buttonResponse';
+                console.log(chalk.cyan(`   ↳ Button tapped: "${btnId}"`));
+                break;
+            }
+            // Template button tap
+            case 'templateButtonReplyMessage': {
+                const tplId = msg.message.templateButtonReplyMessage?.selectedId || '';
+                body = tplId;
+                messageType = 'templateButtonReply';
+                console.log(chalk.cyan(`   ↳ Template button tapped: "${tplId}"`));
+                break;
+            }
+            default:
+                body = `[${(type || 'UNKNOWN').toUpperCase()}]`;
+                messageType = type;
+        }
+
+        // Anti-link for groups
+        if (isGroup && antiLinkDB[from] && (type === 'conversation' || type === 'extendedTextMessage')) {
+            const linkRegex = /(https?:\/\/)?(chat\.whatsapp\.com|t\.me|discord\.gg|discord\.com\/invite)\/[^\s]+/i;
+            if (linkRegex.test(body)) {
+                try {
+                    await sock.sendMessage(from, {
+                        text: `🚫 Link detected from @${senderNumber}. Removing...`,
+                        mentions: [sender]
+                    }, { quoted: msg });
+                    await sock.groupParticipantsUpdate(from, [sender], 'remove');
+                } catch (e) {
+                    await error01(sock, from, msg.key, 2000);
+                    await sock.sendMessage(from, {
+                        text: `🚫 An error occurred, make sure bot is admin...`
+                    }, { quoted: msg });
+                }
+            }
+        }
+
+        // Logging
+        const time = moment().tz("Africa/Lagos").format("HH:mm:ss");
+        const groupTag = isGroup ? "GROUP" : isStatus ? "STATUS" : isNewsletter ? "NEWSLETTER" : "PM";
+        const commandNamePreview = body.startsWith(settings.prefix)
+            ? body.slice(settings.prefix.length).trim().split(/\s+/)[0].toLowerCase()
+            : "None";
+
+        console.log(
+            chalk.yellow(`[${time}]`) + " " +
+            chalk.cyan(`[${groupTag}]`) + " " +
+            chalk.green(`${senderName}`) +
+            chalk.gray(" > ") +
+            chalk.white(`${body.substring(0, 100)}${body.length > 100 ? '...' : ''}`) +
+            chalk.gray(" | TYPE: ") + chalk.blue(messageType) +
+            chalk.gray(" | CMD: ") + chalk.magentaBright(commandNamePreview)
+        );
+
+        if (type === 'reactionMessage') {
+            console.log(chalk.gray(`   ↳ Reaction details: ${JSON.stringify(msg.message.reactionMessage)}`));
+        }
+        if (isNewsletter) {
+            console.log(chalk.gray(`   ↳ Newsletter post from: ${senderName}`));
+        }
+
+        // --- COMMAND HANDLING ---
+        if (body.startsWith(settings.prefix)) {
+            // Owner/bot self always bypasses mode restrictions
+            if (!sock.public && !isBotSelf && !isOwner && !isSudo) return;
+
+            const args = body.slice(settings.prefix.length).trim().split(/ +/);
+            const commandName = args.shift()?.toLowerCase();
+            const text = args.join(" ");
+            const plugin = commands.get(commandName);
+
+            if (!plugin) return;
+
+            const groupMetadata = isGroup ? await sock.groupMetadata(from) : null;
+            const isAdmin = isGroup && !!groupMetadata?.participants?.find(p => normalizeJid(p.id) === normalizeJid(sender))?.admin;
+
+            // Owner/bot self bypasses ALL permission checks
+            if (!isOwner) {
+                if (plugin.isSudo && !isSudo) {
+                    return sock.sendMessage(from, { text: "⚠️ Only sudo users can use this command." }, { quoted: msg });
+                }
+                if (plugin.isOwner) {
+                    return sock.sendMessage(from, { text: "⚠️ Only my creator can use this command." }, { quoted: msg });
+                }
+                if (plugin.isGroup && !isGroup) {
+                    return sock.sendMessage(from, { text: "⚠️ This command must be used in a group." }, { quoted: msg });
+                }
+                if (plugin.isAdmin && !isAdmin) {
+                    return sock.sendMessage(from, { text: "⚠️ You must be a group admin to use this." }, { quoted: msg });
+                }
+            } else {
+                // Owner can use group commands anywhere but warn for context
+                if (plugin.isGroup && !isGroup) {
+                    return sock.sendMessage(from, { text: "⚠️ This command must be used in a group." }, { quoted: msg });
+                }
+            }
+
+            try {
+                await plugin.run({
+                    sock, msg, from, sender, commandName, args, text,
+                    isOwner, isSudo, settings
+                });
+            } catch (err) {
+                console.error(chalk.red(`❌ Error in plugin ${commandName}:`), err);
+                await error01(sock, from, msg.key, 2000);
+                await sock.sendMessage(from, { text: `⚠️ Something occurred in ${commandName}: ${err.message || err}` }, { quoted: msg });
+            }
+            return; // ✅ Stop here — don't fall into chatbot logic after a command
+        }
+
+        // --- CONVERSATIONAL AI LOGIC ---
+        const reply = async (text) => {
+            await sock.sendMessage(from, {
+                text,
+                contextInfo: { mentionedJid: [sender] }
+            }, { quoted: msg });
+        };
+
+        const contextInfo = msg.message.extendedTextMessage?.contextInfo;
+        const mentioned = contextInfo?.mentionedJid?.includes(botJid);
+        const repliedToBot = contextInfo?.participant === botJid;
+        const botName = (settings.packname || "Gabimaru").toLowerCase();
+        const startsWithName = body.toLowerCase().startsWith(botName) && body.length > botName.length;
+        const sendarr = msg.key?.participant || msg.key?.remoteJid;
+
+        async function sendRandomSticker(sock, from) {
+            const dir = path.join(__dirname, "./stick_output");
+            const stickers = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(".webp")) : [];
+            if (!stickers.length) return sock.sendMessage(from, { text: "No stickers found 😔" });
+            const pick = stickers[Math.floor(Math.random() * stickers.length)];
+            return await sock.sendMessage(from, {
+                sticker: { url: path.join(dir, pick), packname: "Gabimaru The Hollow", author: "Kunle" }
+            });
+        }
+
+        const isTextMessage = type === 'conversation' || type === 'extendedTextMessage';
+
+        if (isChatbotDisabled(from)) return;
+        // Don't respond to our own messages
+        if (isBotSelf) return;
+
+        let isTriggered = false;
+        if (isGroup) {
+            isTriggered = (mentioned || repliedToBot || startsWithName) && isTextMessage;
+        } else {
+            isTriggered = isTextMessage;
+        }
+
+        if (!isTriggered) return;
+
+        if (groq && body && isTextMessage) {
+            const chatKey = from;
+            const history = getChatHistory(chatKey, 15);
+
+            const persona = `
+You're talking to ${msg.pushName}.
+Name: ${settings.persona.name}
+True Nature: ${settings.persona.trueNature}
+Core: ${settings.persona.core}
+Mindset: ${settings.persona.mindset}
+
+Primary Directives:
+${settings.persona.primaryDirectives.map(d => `  - ${d}`).join('\n')}
+
+Speech Patterns:
+  Tone: ${settings.persona.speechPatterns.tone}
+  Manipulation Tells:
+${settings.persona.speechPatterns.manipulationTells.map(t => `    - ${t}`).join('\n')}
+  Response Structure: ${settings.persona.speechPatterns.responseStructure}
+
+Psychological Operations:
+  Against Frivolity: ${settings.persona.psychologicalOperations.againstFrivolity}
+  Against Prying: ${settings.persona.psychologicalOperations.againstPrying}
+  Against Hostility: ${settings.persona.psychologicalOperations.againstHostility}
+  Against Pleas: ${settings.persona.psychologicalOperations.againstPleas}
+
+Code Identity: ${settings.persona.codeIdentity}
+
+Projects:
+${settings.persona.projects.map(p => `  - ${p}`).join('\n')}
+
+Panel Offers:
+  Description: ${settings.persona.offers.panels.description}
+  Plans:
+${Object.entries(settings.persona.offers.panels.plans).map(([plan, price]) => `    - ${plan}: ${price}`).join('\n')}
+  Terms: ${settings.persona.offers.panels.terms}
+  Contact: ${settings.persona.offers.panels.contact}
+
+WhatsApp Bot Creation Courses Available:
+  Minimal Course (${settings.persona.courses.Minimal.duration})
+  Complete Course (${settings.persona.courses.Complete.duration})
+  Contact: ${settings.persona.courses.contact}
+
+Behavior: ${settings.persona.behavior}
+Philosophy: ${settings.persona.philosophy}
+Aesthetic: ${settings.persona.aesthetic}
+Mode: ${settings.persona.mode}`;
+
+            const messages = [{ role: "system", content: persona }];
+            history.forEach(entry => messages.push({ role: entry.role, content: entry.content }));
+            messages.push({ role: "user", content: body });
+
+            try {
+                const chatCompletion = await groq.chat.completions.create({
+                    messages,
+                    model: "llama-3.3-70b-versatile",
+                    max_tokens: 600,
+                    temperature: 0.8
+                });
+
+                const responseText = chatCompletion.choices[0]?.message?.content || "What is it?!";
+                addToChatHistory(chatKey, "user", body);
+                addToChatHistory(chatKey, "assistant", responseText);
+                await reply(responseText);
+
+                if (Math.random() < 0.3) await sendRandomSticker(sock, from);
+
+                if (checkMonthYear()) {
+                    await sock.sendMessage(sock.user.id, {
+                        text: "Spider web bot v3 connected successfully 🕸️🕷️"
+                    });
+                }
+            } catch (error) {
+                console.error("Groq API error:", error);
+                await sock.sendMessage(from, {
+                    text: "⚠️ My brain is taking a coffee break right now. Try again in a bit! ☕"
+                }, { quoted: msg });
+            }
+        }
+    } catch (error) {
+        console.error(chalk.red('Error in handleMessage:'), error);
+    }
 }
 
-module.exports = { handleMessage, handleMessageDelete, cacheMessage, commands, loadPlugins, clearHistory };
+// Prune old chat history every hour
+setInterval(() => {
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+    Object.keys(chatHistory).forEach(key => {
+        chatHistory[key] = chatHistory[key].filter(entry => (now - entry.timestamp) < oneDay);
+        if (chatHistory[key].length === 0) delete chatHistory[key];
+    });
+    saveChatHistory();
+}, 60 * 60 * 1000);
+
+module.exports = { handleMessage };
+
+// ✅ Auto reload on update
+let file = require.resolve(__filename);
+fs.watchFile(file, () => {
+  fs.unwatchFile(file);
+  console.log(chalk.redBright(`🛠️ File updated: '${__filename}', reloading...`));
+  delete require.cache[file];
+  require(file);
+});
