@@ -1,437 +1,341 @@
 /**
- * site.js — Spider-Venom Web Server v6
- * Optimized + Secure Admin Panel
+ * site.js - Gabimaru Bot Web Server
+ * Provides web-based pairing, dashboard, user management
+ * Based on TMK pair site architecture
  */
-const express      = require("express");
-const session      = require("express-session");
-const crypto       = require("crypto");
+
+const express = require("express");
+const session = require("express-session");
 const startpairing = require("./pair");
-const fs           = require("fs");
-const path         = require("path");
-const axios        = require("axios");
-const { autoLoadPairs }                  = require("./autoload");
-const { getAllSessions, getSessionCount } = require("./sessionManager");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const { autoLoadPairs } = require("./autoload");
+const { getAllSessions } = require("./sessionManager");
 
-const app  = express();
-const PORT = process.env.PORT || 3000;
+const app = express();
+app.set("json spaces", 2);
+const PORT = process.env.PORT || 2010;
 
-// ── Admin Password ─────────────────────────────────────────────────────────────
-// Set ADMIN_PASSWORD in your environment variables!
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "spider_admin_2024";
+// ── Paths ─────────────────────────────────────────────────────────────────────
+const pairedNumbersPath = path.join(__dirname, "sesFolder", "pairedNumbers.json");
+const pairingCodePath   = path.join(__dirname, "richstore", "pairing", "pairing.json");
+const usersPath         = path.join(__dirname, "richstore", "users.json");
 
-// ── Token Store (in-memory) ────────────────────────────────────────────────────
-const adminTokens = new Set();
-function generateToken() {
-  const token = crypto.randomBytes(32).toString("hex");
-  adminTokens.add(token);
-  setTimeout(() => adminTokens.delete(token), 12 * 60 * 60 * 1000); // 12h expiry
-  return token;
-}
-function isValidToken(token) { return token && adminTokens.has(token); }
-
-// ── Event Buffer (live console) ────────────────────────────────────────────────
-const eventBuffer = [];
-function pushEvent(msg, type = "info") {
-  eventBuffer.push({ msg, type, ts: Date.now() });
-  if (eventBuffer.length > 100) eventBuffer.shift();
-}
-global.pushAdminEvent = pushEvent;
-
-// ── File Paths ─────────────────────────────────────────────────────────────────
-const pairedNumbersPath = path.join(__dirname, "sesFolder",  "pairedNumbers.json");
-const pairingCodePath   = path.join(__dirname, "richstore",  "pairing", "pairing.json");
-const usersPath         = path.join(__dirname, "richstore",  "users.json");
-const blockListPath     = path.join(__dirname, "richstore",  "blocklist.json");
-const settingsPath      = path.join(__dirname, "settings.json");
-const cmdBanPath        = path.join(__dirname, "richstore", "cmdban.json");
-
-[pairedNumbersPath, usersPath, blockListPath].forEach((p) => {
-  if (!fs.existsSync(path.dirname(p))) fs.mkdirSync(path.dirname(p), { recursive: true });
+// ── Ensure required files exist ───────────────────────────────────────────────
+[
+  { file: pairedNumbersPath, def: { numbers: [] } },
+  { file: usersPath,         def: { users: [] } },
+  { file: pairingCodePath,   def: {} },
+].forEach(({ file, def }) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
 });
-if (!fs.existsSync(pairedNumbersPath)) fs.writeFileSync(pairedNumbersPath, JSON.stringify({ numbers: [] }, null, 2));
-if (!fs.existsSync(usersPath))         fs.writeFileSync(usersPath,         JSON.stringify({ users: []   }, null, 2));
-if (!fs.existsSync(blockListPath))     fs.writeFileSync(blockListPath,     JSON.stringify({ blocked: [] }, null, 2));
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-function readJSON(p, fb = {})   { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return fb; } }
-function writeJSON(p, d)        { fs.writeFileSync(p, JSON.stringify(d, null, 2)); }
-function loadSettings()         { return readJSON(settingsPath, {}); }
-function saveSettings(s)        { writeJSON(settingsPath, s); }
-function loadNumbers()          { return readJSON(pairedNumbersPath, { numbers: [] }); }
-function saveNumber(number) {
-  const clean = number.replace(/@s\.whatsapp\.net$/i, "");
-  const list  = loadNumbers();
-  const nums  = list.numbers.map(n => typeof n === "string" ? n : n.number);
-  if (!nums.includes(clean)) { list.numbers.push(clean); writeJSON(pairedNumbersPath, list); }
-}
-
-let currentPairingNumber = null;
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
-const SESSION_SECRET = process.env.SESSION_SECRET || "venom_symbiote_gabimaru_key_2024";
-app.use(session({ secret: SESSION_SECRET, resave: false, saveUninitialized: true, cookie: { secure: process.env.NODE_ENV === "production" } }));
+app.use(session({
+  secret: "gabimaru_hollow_secret",
+  resave: false,
+  saveUninitialized: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "frontend"), { index: false }));
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin",  "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-admin-token");
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   next();
 });
 
-// ── Admin Auth Middleware ──────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function loadUsers() {
+  try { return JSON.parse(fs.readFileSync(usersPath, "utf8")).users || []; }
+  catch { return []; }
+}
+function saveUsers(users) {
+  fs.writeFileSync(usersPath, JSON.stringify({ users }, null, 2));
+}
+function saveNumber(number) {
+  let list = { numbers: [] };
+  try { list = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8")); } catch {}
+  if (!list.numbers.includes(number)) {
+    list.numbers.push(number);
+    fs.writeFileSync(pairedNumbersPath, JSON.stringify(list, null, 2));
+  }
+}
+function requireLogin(req, res, next) {
+  if (req.session.loggedIn) return next();
+  res.redirect("/login.html");
+}
 function requireAdmin(req, res, next) {
-  const token = req.headers["x-admin-token"] || req.query.token;
-  if (!isValidToken(token)) return res.status(401).json({ success: false, message: "Unauthorized" });
-  next();
+  if (req.session.loggedIn && req.session.username === "admin") return next();
+  res.redirect("/adminlogin.html");
 }
 
-// ── Public Routes ──────────────────────────────────────────────────────────────
-app.get("/",      (req, res) => res.sendFile(path.join(__dirname, "frontend", "index.html")));
-app.get("/admin", (req, res) => res.sendFile(path.join(__dirname, "frontend", "admin.html")));
+// ── Auth routes ───────────────────────────────────────────────────────────────
+app.post("/register", (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ success: false, message: "All fields required." });
+  const users = loadUsers();
+  if (users.find(u => u.username === username)) return res.status(409).json({ success: false, message: "Username taken." });
+  users.push({ username, password, pairings: [] });
+  saveUsers(users);
+  req.session.loggedIn = true;
+  req.session.username = username;
+  res.json({ success: true });
+});
 
-app.get("/pair", async (req, res) => {
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  const settings = JSON.parse(fs.readFileSync("./settings.json"));
+  // Admin check
+  if (username === "admin" && password === (settings.adminPassword || "admin123")) {
+    req.session.loggedIn = true; req.session.username = "admin";
+    return res.json({ success: true });
+  }
+  const user = loadUsers().find(u => u.username === username && u.password === password);
+  if (user) {
+    req.session.loggedIn = true; req.session.username = username;
+    return res.json({ success: true });
+  }
+  res.status(401).json({ success: false, message: "Invalid credentials." });
+});
+
+app.get("/logout", (req, res) => {
+  req.session.destroy(() => res.redirect("/login.html"));
+});
+
+app.get("/me", (req, res) => {
+  if (!req.session.loggedIn) return res.status(401).json({ success: false });
+  const user = loadUsers().find(u => u.username === req.session.username);
+  if (!user) return res.status(404).json({ success: false });
+  res.json({ username: user.username, pairings: user.pairings || [] });
+});
+
+// ── Pairing routes ────────────────────────────────────────────────────────────
+let currentPairingNumber = null;
+
+app.get("/pair", requireLogin, async (req, res) => {
   let number = (req.query.number || "").replace(/\s+/g, "").replace(/^\+/, "");
-  if (!/^\d+$/.test(number) || number.length < 7 || number.length > 15)
-    return res.status(400).send("Include country code (e.g. 2549012345678).");
-  const data = loadNumbers();
-  const nums = data.numbers.map(n => typeof n === "string" ? n : n.number);
-  if (nums.includes(number)) return res.status(409).send("Number already paired.");
-  if (nums.length >= 5)      return res.status(403).send("Maximum of 5 paired numbers reached.");
+  if (!number) return res.status(400).json({ success: false, message: "Phone number required." });
+  if (!/^\d+$/.test(number)) return res.status(400).json({ success: false, message: "Digits only." });
+  if (number.length < 11 || number.length > 15) return res.status(400).json({ success: false, message: "Include country code (e.g. 2349012345678)." });
+
+  const users = loadUsers();
+  const user = users.find(u => u.username === req.session.username);
+  if (!user) return res.status(401).json({ success: false, message: "User not found." });
+
+  user.pairings = user.pairings || [];
+  if (user.pairings.includes(number)) return res.status(409).json({ success: false, message: "Number already paired." });
+  if (user.pairings.length >= 2) return res.status(403).json({ success: false, message: "Maximum 2 pairings reached." });
+
   currentPairingNumber = number;
+
   try {
+    // Delete old pairing code so frontend doesn't show stale one
+    if (fs.existsSync(pairingCodePath)) fs.writeFileSync(pairingCodePath, "{}");
     await startpairing(number);
     saveNumber(number);
-    pushEvent(`Pairing started for +${number}`, "info");
-    res.send("Pairing started. Check /pairing-code.");
-  } catch (e) { res.status(500).send("Pairing failed: " + e.message); }
+    user.pairings.push(number);
+    saveUsers(users);
+    res.json({ success: true, message: "Pairing started. Poll /pairing-code for the code." });
+  } catch (e) {
+    res.status(500).json({ success: false, message: "Pairing failed: " + e.message });
+  }
 });
 
 app.get("/pairing-code", (req, res) => {
   try {
-    if (fs.existsSync(pairingCodePath)) {
-      const data = JSON.parse(fs.readFileSync(pairingCodePath, "utf8"));
-      return res.json({ code: data.code, number: currentPairingNumber });
-    }
-    res.status(404).json({ error: "Pairing code not yet available" });
-  } catch { res.status(500).json({ error: "Error reading pairing code" }); }
+    const data = JSON.parse(fs.readFileSync(pairingCodePath, "utf8"));
+    if (data.code) return res.json({ code: data.code, number: currentPairingNumber });
+    res.status(404).json({ error: "Code not ready yet." });
+  } catch {
+    res.status(500).json({ error: "Error reading pairing code." });
+  }
 });
 
-app.get("/paired", (req, res) => {
+app.get("/paired", requireLogin, (req, res) => {
   try {
-    const sessions = getAllSessions().map(([n]) => n.replace(/@s\.whatsapp\.net$/i, ""));
-    const data     = loadNumbers();
-    const nums     = data.numbers.map(n => typeof n === "string" ? n : n.number);
-    res.json({ numbers: nums.map(n => ({ number: n, active: sessions.includes(n) })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const data = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8"));
+    res.json({ numbers: data.numbers });
+  } catch {
+    res.status(500).json({ error: "Could not load paired numbers." });
+  }
 });
 
-app.delete("/paired/:number", (req, res) => {
+app.delete("/paired/:number", requireLogin, (req, res) => {
   const number = req.params.number;
   try {
-    const data    = loadNumbers();
-    const updated = { numbers: data.numbers.filter((n) => (typeof n === "string" ? n : n.number) !== number) };
-    writeJSON(pairedNumbersPath, updated);
-    const folder = path.join(__dirname, "richstore", "pairing", number);
-    if (fs.existsSync(folder)) fs.rmSync(folder, { recursive: true, force: true });
-    pushEvent(`Session removed: +${number}`, "warn");
-    res.json({ success: true, message: `Removed ${number}.` });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    const data = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8"));
+    data.numbers = data.numbers.filter(n => n !== number);
+    fs.writeFileSync(pairedNumbersPath, JSON.stringify(data, null, 2));
+
+    const users = loadUsers();
+    const user = users.find(u => u.username === req.session.username);
+    if (user) { user.pairings = (user.pairings || []).filter(n => n !== number); saveUsers(users); }
+
+    const sessionDir = path.join(__dirname, "richstore", "pairing", number);
+    if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
+
+    res.json({ success: true, message: `Deleted ${number}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-app.get("/ses-status", (req, res) => {
+app.get("/reload-session", requireLogin, async (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).json({ success: false, message: "Number required." });
+  try {
+    await startpairing(number);
+    res.json({ success: true, message: `Reloaded session for ${number}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── Admin routes ───────────────────────────────────────────────────────────────
+app.get("/admin-data", requireAdmin, (req, res) => {
+  const users = loadUsers();
+  let paired = [];
+  try { paired = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8")).numbers || []; } catch {}
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const start = (page - 1) * limit;
+  res.json({
+    users: users.slice(start, start + limit),
+    paired,
+    totalUsers: users.length,
+    page, limit,
+    totalPages: Math.ceil(users.length / limit)
+  });
+});
+
+app.get("/admin/ses-status", requireAdmin, (req, res) => {
+  const sessions = getAllSessions().map(([num]) => ({
+    number: num.replace(/@s\.whatsapp\.net$/, ""),
+    status: "active"
+  }));
+  res.json({ success: true, totalSessions: sessions.length, sessions });
+});
+
+app.get("/admin/react", requireAdmin, async (req, res) => {
+  const { channelmsglink, emoji } = req.query;
+  if (!channelmsglink) return res.status(400).json({ success: false, message: "channelmsglink is required." });
+
   const sessions = getAllSessions();
-  res.json({ success: true, totalSessions: sessions.length, sessions: sessions.map(([n]) => ({ number: n.replace(/@s\.whatsapp\.net$/i, ""), status: "active" })) });
-});
+  if (sessions.length === 0) return res.status(503).json({ success: false, message: "No active sessions available." });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime(), sessions: getSessionCount(), memory: process.memoryUsage().heapUsed });
-});
+  // Parse newsletter ID and message ID from link
+  // Format: https://whatsapp.com/channel/<id>/<msgid>
+  const match = channelmsglink.match(/channel\/([^/]+)(?:\/([^/?]+))?/);
+  if (!match) return res.status(400).json({ success: false, message: "Invalid channel message link." });
 
-// ── Admin Auth ─────────────────────────────────────────────────────────────────
-app.post("/admin/auth", (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(400).json({ success: false, message: "Password required" });
-  const given   = crypto.createHash("sha256").update(password).digest("hex");
-  const correct = crypto.createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
-  if (given !== correct) {
-    pushEvent("Failed admin login attempt", "error");
-    return res.status(401).json({ success: false, message: "Incorrect password" });
+  const newsletterId = match[1] + "@newsletter";
+  const messageId = match[2] || null;
+
+  const results = [];
+  for (const [jid, sock] of sessions) {
+    try {
+      await sock.newsletterReactMessage(newsletterId, messageId, emoji || "❤️");
+      results.push({ number: jid.replace(/@s\.whatsapp\.net$/, ""), success: true });
+    } catch (e) {
+      results.push({ number: jid.replace(/@s\.whatsapp\.net$/, ""), success: false, error: e.message });
+    }
   }
-  const token = generateToken();
-  pushEvent("Admin logged in", "success");
-  res.json({ success: true, token });
+
+  const successful = results.filter(r => r.success).length;
+  res.json({
+    success: true,
+    message: `Reacted on ${successful}/${sessions.length} sessions.`,
+    summary: { successful, totalSessions: sessions.length },
+    target: { newsletterId, messageId },
+    details: results
+  });
 });
 
-app.get("/admin/verify", (req, res) => {
-  res.json({ valid: isValidToken(req.headers["x-admin-token"]) });
-});
+app.get("/admin/idch", requireAdmin, async (req, res) => {
+  const { inviteCode } = req.query;
+  if (!inviteCode) return res.status(400).json({ success: false, message: "inviteCode is required." });
 
-// ── Protected Admin Routes ─────────────────────────────────────────────────────
-app.get("/admin/stats", requireAdmin, (req, res) => {
-  const data  = loadNumbers();
-  const nums  = data.numbers.map(n => typeof n === "string" ? n : n.number);
-  let cmdCount = 0;
-  try { const g = require("./gabi"); cmdCount = g.commands.size; } catch {}
-  res.json({ success: true, sessions: getSessionCount(), uptime: process.uptime(), numbers: nums.length, commands: cmdCount });
-});
+  const sessions = getAllSessions();
+  if (sessions.length === 0) return res.status(503).json({ success: false, message: "No active sessions available." });
 
-app.get("/admin/events", requireAdmin, (req, res) => {
-  const since  = parseInt(req.query.since) || 0;
-  const events = eventBuffer.filter(e => e.ts > since);
-  res.json({ events, lastTs: eventBuffer.length ? eventBuffer[eventBuffer.length-1].ts : 0 });
-});
-
-// Blocks
-app.get("/admin/blocks", requireAdmin, (req, res) => res.json({ success: true, blocked: readJSON(blockListPath, { blocked: [] }).blocked }));
-app.post("/admin/blocks", requireAdmin, (req, res) => {
-  const { number } = req.body;
-  if (!number) return res.status(400).json({ success: false, message: "Number required" });
-  const clean = number.replace(/\D/g, "");
-  const data  = readJSON(blockListPath, { blocked: [] });
-  if (data.blocked.includes(clean)) return res.json({ success: false, message: "Already blocked" });
-  data.blocked.push(clean);
-  writeJSON(blockListPath, data);
-  pushEvent(`Blocked: +${clean}`, "warn");
-  res.json({ success: true });
-});
-app.delete("/admin/blocks/:number", requireAdmin, (req, res) => {
-  const data = readJSON(blockListPath, { blocked: [] });
-  data.blocked = data.blocked.filter(n => n !== req.params.number);
-  writeJSON(blockListPath, data);
-  pushEvent(`Unblocked: +${req.params.number}`, "info");
-  res.json({ success: true });
-});
-
-// Sudo
-app.get("/admin/sudo", requireAdmin, (req, res) => res.json({ success: true, sudo: loadSettings().sudo || [] }));
-app.post("/admin/sudo", requireAdmin, (req, res) => {
-  const { number } = req.body;
-  if (!number) return res.status(400).json({ success: false, message: "Number required" });
-  const jid = `${number.replace(/\D/g,"")}@s.whatsapp.net`;
-  const s   = loadSettings();
-  s.sudo    = s.sudo || [];
-  if (s.sudo.includes(jid)) return res.json({ success: false, message: "Already sudo" });
-  s.sudo.push(jid);
-  saveSettings(s);
-  pushEvent(`Sudo added: ${jid}`, "success");
-  res.json({ success: true });
-});
-app.delete("/admin/sudo/:jid", requireAdmin, (req, res) => {
-  const jid = decodeURIComponent(req.params.jid);
-  const s   = loadSettings();
-  s.sudo    = (s.sudo || []).filter(x => x !== jid);
-  saveSettings(s);
-  pushEvent(`Sudo removed: ${jid}`, "warn");
-  res.json({ success: true });
-});
-
-// Command bans
-app.get("/admin/cmdbans", requireAdmin, (req, res) => {
-  const data = readJSON(cmdBanPath, { global: [] });
-  res.json({ success: true, bans: Array.isArray(data.global) ? data.global : [] });
-});
-app.post("/admin/cmdbans", requireAdmin, (req, res) => {
-  const { command } = req.body;
-  if (!command) return res.status(400).json({ success: false, message: "Command required" });
-  const data = readJSON(cmdBanPath, { global: [] });
-  if (!Array.isArray(data.global)) data.global = [];
-  if (data.global.includes(command)) return res.json({ success: false, message: "Already banned" });
-  data.global.push(command);
-  writeJSON(cmdBanPath, data);
-  pushEvent(`Command banned: .${command}`, "warn");
-  res.json({ success: true });
-});
-app.delete("/admin/cmdbans/:cmd", requireAdmin, (req, res) => {
-  const data = readJSON(cmdBanPath, { global: [] });
-  if (!Array.isArray(data.global)) data.global = [];
-  data.global = data.global.filter(c => c !== req.params.cmd);
-  writeJSON(cmdBanPath, data);
-  pushEvent(`Command unbanned: .${req.params.cmd}`, "info");
-  res.json({ success: true });
-});
-
-// Settings
-app.get("/admin/settings",   requireAdmin, (req, res) => res.json({ success: true, settings: loadSettings() }));
-app.patch("/admin/settings", requireAdmin, (req, res) => {
-  const { key, value } = req.body;
-  if (!key) return res.status(400).json({ success: false, message: "Key required" });
-  const s = loadSettings();
-  if (key === "identity") { if (value.botName) s.botName = value.botName; if (value.prefix) s.prefix = value.prefix; }
-  else s[key] = value;
-  saveSettings(s);
-  pushEvent(`Setting updated: ${key}`, "info");
-  res.json({ success: true });
-});
-
-// Send message
-app.post("/admin/send", requireAdmin, async (req, res) => {
-  const { jid, message } = req.body;
-  if (!jid || !message) return res.status(400).json({ success: false, message: "jid and message required" });
   try {
-    const sessions = getAllSessions();
-    if (!sessions.length) return res.json({ success: false, message: "No active session" });
     const [, sock] = sessions[0];
-    const target   = jid === "me" ? sock.user.id : jid;
-    await sock.sendMessage(target, { text: message });
-    pushEvent(`Message sent to ${target}`, "cmd");
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    const metadata = await sock.getNewsletterInfo("https://whatsapp.com/channel/" + inviteCode);
+    res.json({ success: true, metadata });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
-// Broadcast
-app.post("/admin/broadcast", requireAdmin, async (req, res) => {
-  const { message, target } = req.body;
-  if (!message) return res.status(400).json({ success: false, message: "Message required" });
+app.get("/reload-user", requireAdmin, async (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).json({ success: false, message: "Number required." });
   try {
-    const sessions = getAllSessions();
-    if (!sessions.length) return res.json({ success: false, message: "No active sessions" });
-    let sent = 0;
-    for (const [, sock] of sessions) {
-      try {
-        const groups = await sock.groupFetchAllParticipating();
-        if (target === "all" || !target) {
-          for (const [id] of Object.entries(groups)) {
-            await sock.sendMessage(id, { text: message });
-            sent++;
-            await new Promise(r => setTimeout(r, 500)); // rate limit
-          }
-        }
-      } catch {}
-    }
-    pushEvent(`Broadcast sent to ${sent} group(s)`, "success");
-    res.json({ success: true, message: `Sent to ${sent} group(s)` });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    await startpairing(number);
+    res.json({ success: true, message: `Reloaded session for ${number}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-// Actions
-app.post("/admin/action", requireAdmin, (req, res) => {
-  const { action } = req.body;
-  pushEvent(`Admin action: ${action}`, "warn");
-  if (action === "clear-cache") {
-    try { const g = require("./gabi"); g.apiCache.flushAll(); return res.json({ success: true, message: "Cache cleared" }); }
-    catch { return res.json({ success: false, message: "Could not clear cache" }); }
-  }
-  if (action === "reload-plugins") {
-    try {
-      const pluginsDir = path.join(__dirname, "gabi-plugins");
-      const files = fs.readdirSync(pluginsDir).filter(f => f.endsWith(".js"));
-      files.forEach(f => { delete require.cache[require.resolve(path.join(pluginsDir, f))]; });
-      const g = require("./gabi");
-      g.commands.clear();
-      files.forEach(f => {
-        try {
-          const p = require(path.join(pluginsDir, f));
-          if (!p.command) return;
-          const aliases = Array.isArray(p.command) ? p.command : [p.command];
-          aliases.forEach(a => g.commands.set(a.toLowerCase(), p));
-        } catch {}
-      });
-      pushEvent(`Plugins reloaded: ${g.commands.size} commands`, "success");
-      return res.json({ success: true, message: `Reloaded — ${g.commands.size} commands` });
-    } catch (e) { return res.json({ success: false, message: e.message }); }
-  }
-  if (action === "restart") { res.json({ success: true, message: "Restarting..." }); setTimeout(() => process.exit(0), 500); return; }
-  if (action === "stop")    { res.json({ success: true, message: "Stopping..." });   setTimeout(() => process.exit(1), 500); return; }
-  res.status(400).json({ success: false, message: "Unknown action" });
+app.delete("/admin/users/:username", requireAdmin, (req, res) => {
+  let users = loadUsers();
+  const user = users.find(u => u.username === req.params.username);
+  if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+  // Remove pairings
+  const data = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8"));
+  data.numbers = data.numbers.filter(n => !(user.pairings || []).includes(n));
+  fs.writeFileSync(pairedNumbersPath, JSON.stringify(data, null, 2));
+  (user.pairings || []).forEach(num => {
+    const dir = path.join(__dirname, "richstore", "pairing", num);
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  users = users.filter(u => u.username !== req.params.username);
+  saveUsers(users);
+  res.json({ success: true, message: `${req.params.username} deleted.` });
 });
 
-// Danger zone
-app.post("/admin/danger", requireAdmin, (req, res) => {
-  const { action } = req.body;
-  pushEvent(`DANGER: ${action}`, "error");
-  if (action === "disconnect-all") {
-    try {
-      writeJSON(pairedNumbersPath, { numbers: [] });
-      const pd = path.join(__dirname, "richstore", "pairing");
-      fs.readdirSync(pd, { withFileTypes: true }).filter(d => d.isDirectory() && /^\d+$/.test(d.name))
-        .forEach(d => fs.rmSync(path.join(pd, d.name), { recursive: true, force: true }));
-      return res.json({ success: true, message: "All sessions disconnected" });
-    } catch (e) { return res.json({ success: false, message: e.message }); }
-  }
-  if (action === "clear-warnings") {
-    try { const wp = path.join(__dirname, "richstore", "warnings.json"); if (fs.existsSync(wp)) writeJSON(wp, {}); return res.json({ success: true, message: "Warnings cleared" }); }
-    catch (e) { return res.json({ success: false, message: e.message }); }
-  }
-  if (action === "clear-blocks") { writeJSON(blockListPath, { blocked: [] }); return res.json({ success: true, message: "Block list cleared" }); }
-  if (action === "factory-reset") {
-    try {
-      writeJSON(pairedNumbersPath, { numbers: [] });
-      writeJSON(blockListPath,     { blocked: [] });
-      writeJSON(usersPath,         { users: [] });
-      const wp = path.join(__dirname, "richstore", "warnings.json");
-      if (fs.existsSync(wp)) writeJSON(wp, {});
-      return res.json({ success: true, message: "Factory reset complete" });
-    } catch (e) { return res.json({ success: false, message: e.message }); }
-  }
-  res.status(400).json({ success: false, message: "Unknown action" });
+app.delete("/admin/pairs/:number", requireAdmin, (req, res) => {
+  const number = req.params.number;
+  const data = JSON.parse(fs.readFileSync(pairedNumbersPath, "utf8"));
+  data.numbers = data.numbers.filter(n => n !== number);
+  fs.writeFileSync(pairedNumbersPath, JSON.stringify(data, null, 2));
+
+  let users = loadUsers();
+  users.forEach(u => { u.pairings = (u.pairings || []).filter(p => p !== number); });
+  saveUsers(users);
+
+  const dir = path.join(__dirname, "richstore", "pairing", number);
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  res.json({ success: true, message: `Pair ${number} removed.` });
 });
 
-// ── Start ──────────────────────────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", async () => {
-  console.log(`\x1b[35m[SPIDER] Web server on port ${PORT}\x1b[0m`);
-  console.log(`\x1b[33m[SPIDER] Admin panel → http://localhost:${PORT}/admin\x1b[0m`);
-  if (!process.env.ADMIN_PASSWORD) console.log(`\x1b[31m[WARN] Set ADMIN_PASSWORD env var! Currently using default.\x1b[0m`);
-  if (!process.env.DYNO) {
-    try { const ip = (await axios.get("https://api.ipify.org?format=json", { timeout: 3000 })).data.ip; console.log(`\x1b[36mPublic URL: http://${ip}:${PORT}\x1b[0m`); } catch {}
-  }
-  await autoLoadPairs();
-  pushEvent("Bot server started", "success");
-});
+// ── Page routes ────────────────────────────────────────────────────────────────
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "frontend", "index.html")));
+app.get("/admin", (req, res) => res.sendFile(path.join(__dirname, "frontend", "admin.html")));
 
-process.on("uncaughtException",  e => { console.error("[uncaughtException]",  e); pushEvent(`Error: ${e.message}`, "error"); });
-process.on("unhandledRejection", e => { console.error("[unhandledRejection]", e); pushEvent(`Rejection: ${e}`, "error"); });
+// ── Start server ───────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`✅ TMK Site Server is running on port ${PORT}`);
 
-// ── AI Memory Management (added in v7) ────────────────────────────────────────
-const aiMemoryPath = path.join(__dirname, "richstore", "ai_memory.json");
-
-app.get("/admin/ai-memory", requireAdmin, (req, res) => {
   try {
-    const mem = fs.existsSync(aiMemoryPath)
-      ? JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"))
-      : {};
-    const summary = Object.entries(mem).map(([chatId, msgs]) => ({
-      chatId,
-      exchanges: Math.floor(msgs.length / 2),
-      lastMsg: msgs[msgs.length - 1]?.content?.slice(0, 60) || ""
-    }));
-    res.json({ success: true, chats: summary.length, memory: summary });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    const ipRes = await axios.get('https://api.ipify.org?format=json');
+    const ip = ipRes.data.ip;
+
+    console.log(`🌐 Public Access URL: http://${ip}:${PORT}`);
+    console.log(`- Login Page:       http://${ip}:${PORT}/login.html`);
+    console.log(`- Dashboard Page:   http://${ip}:${PORT}/dashboard`);
+  } catch (err) {
+    console.log("⚠️ Couldn't fetch public IP. Use your server panel IP manually.");
+  }
+
+  await autoLoadPairs({ concurrent: false, batchSize: 100 });
 });
 
-app.delete("/admin/ai-memory/:chatId", requireAdmin, (req, res) => {
-  try {
-    const chatId = decodeURIComponent(req.params.chatId);
-    const mem = fs.existsSync(aiMemoryPath)
-      ? JSON.parse(fs.readFileSync(aiMemoryPath, "utf8"))
-      : {};
-    if (chatId === "all") {
-      fs.writeFileSync(aiMemoryPath, "{}");
-      pushEvent("All AI memory cleared", "warn");
-      return res.json({ success: true, message: "All AI memory cleared" });
-    }
-    delete mem[chatId];
-    fs.writeFileSync(aiMemoryPath, JSON.stringify(mem, null, 2));
-    pushEvent(`AI memory cleared for ${chatId}`, "info");
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
-// ── Plugin list endpoint (added in v7) ────────────────────────────────────────
-app.get("/admin/plugins", requireAdmin, (req, res) => {
-  try {
-    const pluginsDir = path.join(__dirname, "gabi-plugins");
-    const files = fs.readdirSync(pluginsDir).filter(f => f.endsWith(".js"));
-    let g;
-    try { g = require("./gabi"); } catch {}
-    const plugins = files.map(f => {
-      let commands = [];
-      try {
-        const p = require(path.join(pluginsDir, f));
-        commands = Array.isArray(p.command) ? p.command : [p.command].filter(Boolean);
-      } catch {}
-      return { file: f, commands };
-    });
-    res.json({ success: true, total: g?.commands?.size || 0, plugins });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
-});
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
